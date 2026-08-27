@@ -1,2 +1,2 @@
-import Link from "next/link";
-export default function Home(){return <main className="min-h-screen grid place-items-center p-8"><div className="max-w-xl text-center"><div className="text-4xl font-bold tracking-tight">AuditOps</div><p className="mt-3 text-gray-600">Compliance, organized. A lightweight compliance operations workspace for activities, evidence, vulnerabilities, assets and audit readiness.</p><Link href="/dashboard" className="inline-block mt-6 rounded-lg bg-gray-900 px-5 py-3 text-white">Open Dashboard</Link></div></main>}
+import { redirect } from "next/navigation";
+export default function Home(){ redirect("/dashboard"); }

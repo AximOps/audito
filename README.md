@@ -1,31 +1,27 @@
-# AuditOps
+# AuditOps MVP
 
-AuditOps is a lightweight compliance operations platform MVP. V1 is framework-neutral and intentionally has **no external system integrations and no control mapping**.
+AuditOps is a compliance operations platform for managing activities, evidence, vulnerabilities, assets, access reviews, policies and audit readiness.
 
 ## Stack
 - Next.js + TypeScript
-- Supabase PostgreSQL/Auth/Storage
 - Tailwind CSS
+- Supabase PostgreSQL/Auth/Storage
+- PostgreSQL Row Level Security (RLS)
 
-## Run locally
-1. Create a Supabase project.
-2. Run `database/schema.sql` in Supabase SQL Editor.
-3. Copy `.env.example` to `.env.local` and add your Supabase URL and anon key.
-4. Run `npm install`.
-5. Run `npm run dev`.
+## Authentication + RBAC
+- `/login` uses Supabase email/password authentication.
+- Protected application routes require an authenticated Supabase user.
+- `/settings/users` is visible only to Organization Admins.
+- RBAC is enforced in the UI and by PostgreSQL RLS policies.
+- Initial roles: Organization Admin, Compliance Manager, Security Manager, IT Manager, Contributor, Auditor / Read Only.
 
-## Current MVP
-- Dashboard
-- Compliance Activities list
-- Vulnerabilities list
-- Assets, Evidence, Policies and Access Reviews scaffolding
-- Multi-tenant database model + RLS
+## Setup
+1. `npm install`
+2. Copy `.env.example` to `.env.local`.
+3. Add your Supabase URL and anon key.
+4. For a fresh database, run `database/schema.sql` in Supabase SQL Editor. If you already installed the previous AuditOps MVP schema, run `database/migrations/001_rbac.sql` instead.
+5. Create a user in Supabase Authentication.
+6. Create an organization and matching `user_profiles` row for the user's auth UUID, with role `Organization Admin` for the first administrator.
+7. `npm run dev`
 
-## Next implementation pass
-- Supabase Auth login/signup/onboarding
-- CRUD forms for every module
-- Storage uploads for evidence/policies
-- Role-aware permissions
-- Audit log triggers
-- Findings/Exceptions/Vendors screens
-- Reports and recurring activity automation
+User invitations and automated onboarding are intentionally deferred to the next pass.
