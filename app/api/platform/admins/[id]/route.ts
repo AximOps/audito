@@ -18,7 +18,6 @@ type ApplicationUser = {
 };
 
 type PlatformUser = {
-  id: string;
   user_id: string;
   role: string;
   status: string;
@@ -91,7 +90,7 @@ async function getContext() {
 
   const { data: platformAdmin, error: platformError } = await admin
     .from("platform_users")
-    .select("id,user_id,role,status")
+    .select("user_id,role,status")
     .eq("user_id", currentUser.id)
     .eq("role", "Platform Admin")
     .eq("status", "Active")
@@ -136,7 +135,7 @@ async function resolveTarget(
 
     const { data: platformUser } = await admin
       .from("platform_users")
-      .select("id,user_id,role,status")
+      .select("user_id,role,status")
       .eq("user_id", id)
       .eq("role", "Platform Admin")
       .maybeSingle();
@@ -173,7 +172,7 @@ async function resolveTarget(
     if (authUser) {
       const { data: platformByAuthId } = await admin
         .from("platform_users")
-        .select("id,user_id,role,status")
+        .select("user_id,role,status")
         .eq("user_id", authUser.id)
         .eq("role", "Platform Admin")
         .maybeSingle();
@@ -187,7 +186,7 @@ async function resolveTarget(
   // Finally allow the route to be called with platform_users.user_id.
   const { data: platformUser } = await admin
     .from("platform_users")
-    .select("id,user_id,role,status")
+    .select("user_id,role,status")
     .eq("user_id", id)
     .eq("role", "Platform Admin")
     .maybeSingle();
@@ -460,7 +459,7 @@ export async function PATCH(
       const { error: platformUpdateError } = await admin
         .from("platform_users")
         .update({ status })
-        .eq("id", target.platformUser.id);
+        .eq("user_id", target.platformUser.user_id);
 
       if (platformUpdateError) {
         return NextResponse.json(
@@ -525,7 +524,7 @@ export async function DELETE(
     const { error: deleteError } = await admin
       .from("platform_users")
       .delete()
-      .eq("id", target.platformUser.id)
+      .eq("user_id", target.platformUser.user_id)
       .eq("role", "Platform Admin");
 
     if (deleteError) {
@@ -540,7 +539,7 @@ export async function DELETE(
       user_id: currentUser.id,
       action: "PLATFORM_ADMIN_ACCESS_REMOVED",
       entity_type: "platform_user",
-      entity_id: target.platformUser.id,
+      entity_id: target.platformUser.user_id,
       old_values: {
         user_id: target.platformUser.user_id,
         email: target.appUser.email,

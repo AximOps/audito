@@ -82,14 +82,14 @@ export async function getServerAuthContext() {
     };
   }
 
-  if (appUser.status === "Disabled") {
+  if (appUser.status === "Disabled" || appUser.status === "Suspended") {
     return {
       supabase,
       user,
       profile: null,
       organization: null,
       platformRole: null,
-      error: "Your AuditOps account is disabled.",
+      error: appUser.status === "Suspended" ? "Your AuditOps account is suspended." : "Your AuditOps account is disabled.",
     };
   }
 
