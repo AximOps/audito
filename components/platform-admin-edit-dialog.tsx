@@ -5,13 +5,21 @@ import { Loader2, X } from "lucide-react";
 
 type UserStatus = "Active" | "Suspended";
 
+export type PlatformAdminUser = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  job_title: string | null;
+  status: string;
+};
+
 type Props = {
   user: {
     id: string;
     email: string;
     full_name: string | null;
     job_title: string | null;
-    status: UserStatus;
+    status: string;
   };
   open: boolean;
   onClose: () => void;
@@ -29,7 +37,9 @@ export default function PlatformAdminEditDialog({
   const [fullName, setFullName] = useState(user.full_name ?? "");
   const [email, setEmail] = useState(user.email);
   const [jobTitle, setJobTitle] = useState(user.job_title ?? "");
-  const [status, setStatus] = useState<UserStatus>(user.status);
+  const [status, setStatus] = useState<UserStatus>(
+    user.status === "Suspended" ? "Suspended" : "Active"
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -39,7 +49,7 @@ export default function PlatformAdminEditDialog({
     setFullName(user.full_name ?? "");
     setEmail(user.email);
     setJobTitle(user.job_title ?? "");
-    setStatus(user.status);
+    setStatus(user.status === "Suspended" ? "Suspended" : "Active");
 
     let cancelled = false;
 

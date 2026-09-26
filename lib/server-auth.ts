@@ -124,12 +124,27 @@ export async function getServerAuthContext() {
     };
   }
 
-  if (selected.organization?.[0]?.status !== "Active") {
+  const organization = Array.isArray(selected.organization)
+    ? selected.organization[0]
+    : selected.organization;
+
+  if (!organization) {
     return {
       supabase,
       user,
       profile: null,
-      organization: selected.organization,
+      organization: null,
+      platformRole: platformUser?.role || null,
+      error: "Organization not found.",
+    };
+  }
+
+  if (organization.status !== "Active") {
+    return {
+      supabase,
+      user,
+      profile: null,
+      organization,
       platformRole: platformUser?.role || null,
       error: "Your AuditOps organization is not active.",
     };
@@ -144,7 +159,7 @@ export async function getServerAuthContext() {
       role: selected.role,
       membership_id: selected.id,
     },
-    organization: selected.organization || null,
+    organization,
     platformRole: platformUser?.role || null,
     error: null,
   };

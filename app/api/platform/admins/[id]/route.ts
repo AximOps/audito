@@ -492,3 +492,76 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { currentUser, admin, error } = await getContext();
+
+    if (error || !admin || !currentUser) {
+      return NextResponse.json(
+        { error: error || "Unauthorized" },
+        { status: error === "Unauthorized" ? 401 : 403 }
+      );
+    }
+
+    const target = await resolveTarget(admin, params.id);
+    if (!target) {
+      return NextResponse.json(
+        { error: "Platform Admin user not found." },
+        { status: 404 }
+      );
+    }
+
+    if (target.platformUser.user_id === currentUser.id) {
+      return NextResponse.json(
+        { error: "You cannot remove your own Platform Admin access." },
+        { status: 400 }
+      );
+    }
+
+    const { error: deleteError } = await admin
+      .from("platform_users")
+      .delete()
+      .eq("id", target.platformUser.id)
+      .eq("role", "Platform Admin");
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: deleteError.message },
+        { status: 400 }
+      );
+    }
+
+    await admin.from("audit_logs").insert({
+      organization_id: null,
+      user_id: currentUser.id,
+      action: "PLATFORM_ADMIN_ACCESS_REMOVED",
+      entity_type: "platform_user",
+      entity_id: target.platformUser.id,
+      old_values: {
+        user_id: target.platformUser.user_id,
+        email: target.appUser.email,
+        role: "Platform Admin",
+        status: target.platformUser.status,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Platform Admin access removed. The AuditOps user account was retained.",
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to remove Platform Admin access.",
+      },
+      { status: 500 }
+    );
+  }
+}

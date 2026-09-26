@@ -16,6 +16,7 @@ interface Category {
 export default function ActivityCategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [role, setRole] = useState("");
+  const [platformRole, setPlatformRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -27,8 +28,10 @@ export default function ActivityCategoriesPage() {
 
   async function load() {
     setLoading(true);
-    const { profile } = await getCurrentProfile();
+    const current = await getCurrentProfile();
+    const { profile } = current;
     setRole(profile?.role || "");
+    setPlatformRole(current.platformRole || null);
     const res = await fetch("/api/activity-categories", { cache: "no-store" });
     const json = await res.json();
     if (!res.ok) setError(json.error || "Unable to load categories.");
@@ -75,11 +78,11 @@ export default function ActivityCategoriesPage() {
   }
 
   const filtered = categories.filter(c => `${c.name} ${c.description || ""}`.toLowerCase().includes(search.toLowerCase()));
-  const canManage = can(role, "activityCategories");
-  const canDelete = role === "Organization Admin";
+  const canManage = platformRole === "Platform Admin" || can(role, "taskCategories");
+  const canDelete = platformRole === "Platform Admin" || role === "Organization Admin";
 
   return (
-    <AppShell requiredPermission="activityCategories">
+    <AppShell requiredPermission="taskCategories">
       <div className="max-w-5xl mx-auto">
         <a href="/dashboard" className="text-sm text-gray-500">← Dashboard</a>
         <div className="flex justify-between items-end mt-5 mb-6">

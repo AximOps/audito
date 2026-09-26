@@ -29,7 +29,9 @@ export type Permission =
   | "reports"
   | "users"
   | "auditLog"
-  | "activityCategories";
+  | "activityCategories"
+  | "taskTypes"
+  | "taskCategories";
 
 export const PERMISSIONS: Record<Permission, readonly Role[]> = {
   dashboard: ROLE_OPTIONS,
@@ -114,6 +116,18 @@ export const PERMISSIONS: Record<Permission, readonly Role[]> = {
   ],
 
   activityCategories: [
+    "Organization Admin",
+    "Compliance Manager",
+  ],
+
+  // Explicit task-management settings permissions.
+  // activityCategories is retained for backward compatibility.
+  taskTypes: [
+    "Organization Admin",
+    "Compliance Manager",
+  ],
+
+  taskCategories: [
     "Organization Admin",
     "Compliance Manager",
   ],

@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, ShieldCheck, X } from "lucide-react";
+import { MoreVertical, Pencil, Plus, ShieldCheck, UserX, X } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { getCurrentProfile } from "@/lib/auth";
+import PlatformAdminEditDialog, { type PlatformAdminUser } from "@/components/platform-admin-edit-dialog";
 
 type AdminRow = {
   user_id: string;
   role: string;
   status: string;
-  user: { email: string; full_name: string | null; job_title: string | null; status: string; last_login_at: string | null } | null;
+  user: { id: string; email: string; full_name: string | null; job_title: string | null; status: string; last_login_at: string | null } | null;
 };
 
 export default function PlatformUsersPage() {
@@ -23,8 +24,11 @@ export default function PlatformUsersPage() {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [jobTitle, setJobTitle] = useState("");
+  const [editing, setEditing] = useState<PlatformAdminUser | null>(null);
+  const [actions, setActions] = useState<string | null>(null);
 
   async function load() {
+    setLoading(true);
     const current = await getCurrentProfile();
     setPlatformRole(current.platformRole);
     if (current.platformRole !== "Platform Admin") { setLoading(false); return; }
@@ -47,10 +51,27 @@ export default function PlatformUsersPage() {
   }
 
   async function changeStatus(userId: string, status: string) {
+    setActions(null);
     const response = await fetch("/api/platform/users", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, status }) });
     const result = await response.json();
     if (!response.ok) setError(result.error || "Unable to update Platform Admin.");
     else { setMessage("Platform Admin status updated."); await load(); }
+  }
+
+  async function removeAdmin(row: AdminRow) {
+    setActions(null);
+    if (!window.confirm(`Remove Platform Admin access from ${row.user?.full_name || row.user?.email || "this user"}? The AuditOps user account will be retained.`)) return;
+    const response = await fetch(`/api/platform/admins/${row.user_id}`, { method: "DELETE" });
+    const result = await response.json();
+    if (!response.ok) setError(result.error || "Unable to remove Platform Admin access.");
+    else { setMessage(result.message || "Platform Admin access removed."); await load(); }
+  }
+
+  function startEdit(row: AdminRow) {
+    setActions(null);
+    if (!row.user) return;
+    setEditing(row.user);
+    setError(""); setMessage("");
   }
 
   if (loading) return <AppShell><div className="max-w-6xl mx-auto bg-white border rounded-xl p-8 text-sm text-gray-500">Loading Platform Admins…</div></AppShell>;
@@ -61,12 +82,14 @@ export default function PlatformUsersPage() {
       <div className="flex items-end justify-between mb-7"><div><div className="flex items-center gap-2 text-sm text-gray-400 mb-2"><ShieldCheck size={16}/> Platform Administration</div><h1 className="text-2xl font-semibold">Platform Admins</h1><p className="text-sm text-gray-500 mt-1">Manage administrators who can manage AuditOps organizations and users.</p></div><button onClick={() => { setError(""); setMessage(""); setOpen(true); }} className="rounded-lg bg-slate-950 text-white px-4 py-2 text-sm flex items-center gap-2"><Plus size={16}/> Add Platform Admin</button></div>
       {message && <div className="mb-5 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 p-3 text-sm">{message}</div>}
       {error && <div className="mb-5 rounded-lg bg-red-50 border border-red-100 text-red-700 p-3 text-sm">{error}</div>}
-      <div className="bg-white border rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1.5fr_1.6fr_1fr_1fr] gap-4 px-5 py-3 border-b text-[11px] uppercase tracking-wide text-gray-400 font-semibold"><div>User</div><div>Email</div><div>Status</div><div>Last Login</div></div>
-        <div className="divide-y">{rows.map((row) => <div key={row.user_id} className="grid grid-cols-[1.5fr_1.6fr_1fr_1fr] gap-4 px-5 py-4 items-center"><div><div className="font-medium text-sm">{row.user?.full_name || "Unnamed user"}</div><div className="text-xs text-gray-500 mt-1">{row.user?.job_title || "Platform Admin"}</div></div><div className="text-sm text-gray-600">{row.user?.email}</div><select value={row.status} onChange={(e) => changeStatus(row.user_id, e.target.value)} className="border rounded-lg px-2.5 py-2 text-sm bg-white"><option>Active</option><option>Suspended</option></select><div className="text-sm text-gray-500">{row.user?.last_login_at ? new Date(row.user.last_login_at).toLocaleString() : "Never"}</div></div>)}</div>
+      <div className="bg-white border rounded-xl overflow-visible">
+        <div className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_auto] gap-4 px-5 py-3 border-b text-[11px] uppercase tracking-wide text-gray-400 font-semibold"><div>User</div><div>Email</div><div>Status</div><div>Last Login</div><div>Actions</div></div>
+        <div className="divide-y">{rows.map((row) => <div key={row.user_id} className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center"><div><div className="font-medium text-sm">{row.user?.full_name || "Unnamed user"}</div><div className="text-xs text-gray-500 mt-1">{row.user?.job_title || "Platform Admin"}</div></div><div className="text-sm text-gray-600 truncate">{row.user?.email}</div><select value={row.status} onChange={(e) => changeStatus(row.user_id, e.target.value)} className="border rounded-lg px-2.5 py-2 text-sm bg-white"><option>Active</option><option>Suspended</option></select><div className="text-sm text-gray-500">{row.user?.last_login_at ? new Date(row.user.last_login_at).toLocaleString() : "Never"}</div><div className="relative"><button onClick={() => setActions(actions === row.user_id ? null : row.user_id)} className="p-2 rounded-lg hover:bg-gray-100"><MoreVertical size={17}/></button>{actions === row.user_id && <div className="absolute right-0 top-10 z-40 w-52 bg-white border rounded-xl shadow-lg p-1"><button onClick={() => startEdit(row)} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-gray-50"><Pencil size={15}/> Edit Platform Admin</button>{row.user_id !== undefined && <button onClick={() => changeStatus(row.user_id, row.status === "Active" ? "Suspended" : "Active")} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-gray-50"><UserX size={15}/> {row.status === "Active" ? "Suspend Admin" : "Enable Admin"}</button>}<button onClick={() => removeAdmin(row)} className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600"><UserX size={15}/> Remove Admin Access</button></div>}</div></div>)}</div>
       </div>
+      <div className="mt-6 bg-gray-50 border rounded-xl p-5"><h3 className="font-semibold text-sm">Platform Admin access</h3><p className="text-xs text-gray-500 mt-2">Removing Platform Admin access does not delete the AuditOps user account. Passwords are managed by Supabase Auth and are never stored in AuditOps.</p></div>
     </div>
     {open && <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"><div className="w-full max-w-lg bg-white rounded-xl shadow-xl"><div className="flex items-center justify-between px-6 py-4 border-b"><div><h2 className="font-semibold">Add Platform Admin</h2><p className="text-xs text-gray-500 mt-1">Existing users can be promoted; new users receive an invitation.</p></div><button onClick={() => setOpen(false)}><X size={19}/></button></div><div className="p-6 space-y-4"><Field label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"/></Field><Field label="Full Name"><input value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"/></Field><Field label="Job Title"><input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"/></Field><button disabled={saving} onClick={addAdmin} className="w-full rounded-lg bg-slate-950 text-white px-4 py-2.5 text-sm disabled:opacity-50">{saving ? "Saving…" : "Add Platform Admin"}</button></div></div></div>}
+    {editing && <PlatformAdminEditDialog user={editing} open={true} onClose={() => setEditing(null)} onSaved={(updated) => { setEditing(null); setMessage("Platform Admin updated successfully."); load(); }} onError={(msg) => setError(msg || "")} />}
   </AppShell>;
 }
 

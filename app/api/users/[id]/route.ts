@@ -102,3 +102,58 @@ export async function PATCH(
     );
   }
 }
+
+
+export async function DELETE(
+  request: Request,
+  context: { params: { id: string } }
+) {
+  try {
+    const { user, profile, platformRole, error } = await getServerAuthContext();
+    if (!user) return NextResponse.json({ error: error || "Unauthorized." }, { status: 401 });
+
+    const organizationId = profile?.organization_id;
+    if (!organizationId) return NextResponse.json({ error: "No active organization is selected." }, { status: 400 });
+    if (platformRole !== "Platform Admin" && profile?.role !== "Organization Admin") {
+      return NextResponse.json({ error: "Only Organization Admins can remove organization users." }, { status: 403 });
+    }
+    if (context.params.id === user.id) {
+      return NextResponse.json({ error: "You cannot remove yourself from the organization." }, { status: 400 });
+    }
+
+    const admin = createAdminClient();
+    const { data: membership } = await admin
+      .from("organization_memberships")
+      .select("id,user_id,organization_id,role,status")
+      .eq("organization_id", organizationId)
+      .eq("user_id", context.params.id)
+      .maybeSingle();
+
+    if (!membership) {
+      return NextResponse.json({ error: "User is not a member of this organization." }, { status: 404 });
+    }
+
+    const { error: deleteError } = await admin
+      .from("organization_memberships")
+      .delete()
+      .eq("id", membership.id);
+
+    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 400 });
+
+    await admin.from("audit_logs").insert({
+      organization_id: organizationId,
+      user_id: user.id,
+      action: "USER_REMOVED_FROM_ORGANIZATION",
+      entity_type: "organization_membership",
+      entity_id: membership.id,
+      old_values: { user_id: context.params.id, role: membership.role, status: membership.status },
+    });
+
+    return NextResponse.json({ success: true, message: "User removed from the organization." });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Unable to remove user." },
+      { status: 500 }
+    );
+  }
+}

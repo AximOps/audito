@@ -50,13 +50,13 @@ const adminNav = [
     href: "/settings/task-types",
     label: "Task Types",
     icon: Tags,
-    permission: "activityCategories" as const,
+    permission: "taskTypes" as const,
   },
   {
     href: "/settings/activity-categories",
     label: "Task Categories",
     icon: Tags,
-    permission: "activityCategories" as const,
+    permission: "taskCategories" as const,
   },
 ];
 
@@ -146,13 +146,18 @@ export default function AppShell({
   }
 
   const role = profile?.role;
+  // Platform Admins retain platform-level authority while operating inside
+  // an organization. Normal users continue to use their membership role.
+  const effectiveRole =
+    platformRole === "Platform Admin" ? "Organization Admin" : role;
+
   const unauthorized =
     !!profile &&
     !!requiredPermission &&
-    !can(role, requiredPermission);
+    !can(effectiveRole, requiredPermission);
 
-  const visibleNav = nav.filter((n) => can(role, n.permission));
-  const visibleAdmin = adminNav.filter((n) => can(role, n.permission));
+  const visibleNav = nav.filter((n) => can(effectiveRole, n.permission));
+  const visibleAdmin = adminNav.filter((n) => can(effectiveRole, n.permission));
 
   const initials = (profile?.full_name || userEmail || "U")
     .split(" ")
@@ -293,7 +298,7 @@ export default function AppShell({
                   {profile?.full_name || "User"}
                 </div>
                 <div className="text-[11px] text-gray-400">
-                  {role || "Loading…"}
+                  {effectiveRole || "Loading…"}
                 </div>
               </div>
 
@@ -311,7 +316,7 @@ export default function AppShell({
                   </div>
                 </div>
 
-                {can(role, "users") && (
+                {can(effectiveRole, "users") && (
                   <Link
                     href="/settings/users"
                     onClick={() => setMenuOpen(false)}
