@@ -1,44 +1,36 @@
-# AuditOps Phase 3 — Application-Managed User Directory
+# AuditOps Organization Management Patch
 
-This package implements **Option A**:
+Adds Platform Administration organization management:
 
-- Supabase Auth remains the authentication engine.
-- `public.users` becomes the AuditOps application user directory.
-- `organization_memberships` remains the organization access/role source of truth.
-- `platform_users` remains the platform-admin source of truth.
-- User creation, invitation, profile changes, organization assignment, role changes, and status changes are performed through the AuditOps portal/server APIs.
-- Passwords and authentication sessions remain managed by Supabase Auth.
+- Edit organization
+- Suspend organization
+- Reactivate organization
+- Soft-remove organization
+- Subscription plans: FREE, Standard, Pro, Enterprise
+- Create Organization with subscription
+- Platform Admin-only API authorization
+- Organization lifecycle audit log entries
+- Prevent suspended/removed organizations from being treated as active memberships
 
-## Apply in this order
+## Files
 
-1. Copy the files into the existing AuditOps project, preserving the existing Phase 1/Phase 2 files.
-2. Add `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SITE_URL` to `.env.local`.
-3. Run `database/migrations/006_application_user_directory.sql` in Supabase SQL Editor.
-4. Confirm the migration succeeds before deploying the code.
-5. Run `npm run build`.
+- `app/platform/organizations/page.tsx`
+- `app/api/platform/organizations/route.ts`
+- `app/api/platform/organizations/[id]/route.ts`
+- `components/` (reserved for future shared organization UI)
+- `lib/organization-plans.ts`
+- `database/migrations/007_organization_management.sql`
 
-## Portal capabilities added
+## Installation
 
-### Organization Users & Roles
+Copy the patch files into the current AuditOps project, preserving the paths, then run the SQL migration in Supabase.
 
-- Add Existing User
-- Invite New User
-- Edit name/job title
-- Change organization role
-- Change organization membership status
-- One user can belong to multiple organizations
+The migration intentionally keeps the existing `organizations.plan` column for backward compatibility and synchronizes it with the new `subscription` field.
 
-### Platform Administration
+Organization removal is soft removal: data is retained and the organization status becomes `Removed`.
 
-- Platform Admins page at `/platform/users`
-- Add an existing AuditOps user as Platform Admin
-- Invite a new Platform Admin
-- Suspend/reactivate Platform Admin access
+The API uses the existing AuditOps Phase 3 helpers:
+- `getServerAuthContext()`
+- `createAdminClient()`
 
-## Important environment variable
-
-`SUPABASE_SERVICE_ROLE_KEY` must only be configured on the server/Vercel environment. Never expose it as a `NEXT_PUBLIC_*` variable.
-
-## Migration safety
-
-`user_profiles` is retained for compatibility with existing AuditOps code. New authorization and directory management use `users`, `organization_memberships`, and `platform_users`.
+No password or authentication changes are included.
