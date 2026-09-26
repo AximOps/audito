@@ -18,9 +18,24 @@ const nav = [
 ];
 
 const adminNav = [
-  { href: "/settings/users", label: "Users & Roles", icon: Users, permission: "users" as const },
-  { href: "/settings/activity-categories", label: "Task Types", icon: Tags, permission: "activityCategories" as const },
-  { href: "/settings/activity-categories", label: "Task Categories", icon: Tags, permission: "activityCategories" as const },
+  { 
+  href: "/settings/users",
+  label: "Users & Roles",
+  icon: Users,
+  permission: "users" as const 
+  },
+  { 
+  href: "/settings/task-types",
+  label: "Task Types",
+  icon: Tags,
+  permission: "activityCategories" as const,
+},
+{
+  href: "/settings/activity-categories",
+  label: "Task Categories",
+  icon: Tags,
+  permission: "activityCategories" as const,
+},
 ];
 
 export default function AppShell({ children, requiredPermission }: { children: React.ReactNode; requiredPermission?: keyof typeof PERMISSIONS }) {
