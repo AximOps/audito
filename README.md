@@ -1,88 +1,44 @@
-# AuditOps MVP
+# AuditOps Phase 3 — Application-Managed User Directory
 
-AuditOps is a compliance operations platform for managing activities, evidence, vulnerabilities, assets, access reviews, policies and audit readiness.
+This package implements **Option A**:
 
-## Stack
-- Next.js + TypeScript
-- Tailwind CSS
-- Supabase PostgreSQL/Auth/Storage
-- PostgreSQL Row Level Security (RLS)
+- Supabase Auth remains the authentication engine.
+- `public.users` becomes the AuditOps application user directory.
+- `organization_memberships` remains the organization access/role source of truth.
+- `platform_users` remains the platform-admin source of truth.
+- User creation, invitation, profile changes, organization assignment, role changes, and status changes are performed through the AuditOps portal/server APIs.
+- Passwords and authentication sessions remain managed by Supabase Auth.
 
-## Authentication + RBAC
-- `/login` uses Supabase email/password authentication.
-- Protected application routes require an authenticated Supabase user.
-- `/settings/users` is visible only to Organization Admins.
-- RBAC is enforced in the UI and by PostgreSQL RLS policies.
-- Initial roles: Organization Admin, Compliance Manager, Security Manager, IT Manager, Contributor, Auditor / Read Only.
+## Apply in this order
 
-## Setup
-1. `npm install`
-2. Copy `.env.example` to `.env.local`.
-3. Add your Supabase URL and anon key.
-4. For a fresh database, run `database/schema.sql` in Supabase SQL Editor. If you already installed the previous AuditOps MVP schema, run `database/migrations/001_rbac.sql` instead.
-5. Create a user in Supabase Authentication.
-6. Create an organization and matching `user_profiles` row for the user's auth UUID, with role `Organization Admin` for the first administrator.
-7. `npm run dev`
+1. Copy the files into the existing AuditOps project, preserving the existing Phase 1/Phase 2 files.
+2. Add `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SITE_URL` to `.env.local`.
+3. Run `database/migrations/006_application_user_directory.sql` in Supabase SQL Editor.
+4. Confirm the migration succeeds before deploying the code.
+5. Run `npm run build`.
 
-User invitations and automated onboarding are intentionally deferred to the next pass.
+## Portal capabilities added
 
-## Latest task enhancements
-Run `database/migrations/003_task_types.sql` after the activity categories migration. This adds organization-specific Task Types (Task, Change Request, Review), status/priority fields to the Task form, and Task detail/update support.
+### Organization Users & Roles
 
+- Add Existing User
+- Invite New User
+- Edit name/job title
+- Change organization role
+- Change organization membership status
+- One user can belong to multiple organizations
 
-## Multi-Organization Upgrade
+### Platform Administration
 
-This version introduces the first phase of AuditOps multi-tenancy.
+- Platform Admins page at `/platform/users`
+- Add an existing AuditOps user as Platform Admin
+- Invite a new Platform Admin
+- Suspend/reactivate Platform Admin access
 
-### Database migration
+## Important environment variable
 
-Run the following in Supabase SQL Editor after migrations 001, 002 and 003:
+`SUPABASE_SERVICE_ROLE_KEY` must only be configured on the server/Vercel environment. Never expose it as a `NEXT_PUBLIC_*` variable.
 
-```text
-database/migrations/004_multi_organization.sql
-```
+## Migration safety
 
-The migration is additive and preserves the existing `user_profiles.organization_id` field for compatibility.
-
-It adds:
-
-- `organization_memberships`
-- `platform_users`
-- organization `status`
-- organization `plan`
-- membership-aware `current_org_id()`
-- platform/admin helper functions
-- membership and platform RLS
-- existing user membership backfill
-
-### Platform administrator bootstrap
-
-The migration intentionally does not automatically make an existing user a Platform Admin.
-
-After the migration, explicitly assign the platform administrator in Supabase SQL Editor:
-
-```sql
-insert into public.platform_users (user_id, role, status)
-select id, 'Platform Admin', 'Active'
-from auth.users
-where lower(email) = lower('YOUR-PLATFORM-ADMIN-EMAIL')
-on conflict (user_id)
-do update set role='Platform Admin', status='Active', updated_at=now();
-```
-
-### Organization context
-
-The application stores the selected organization in browser storage and a secure server cookie. Supabase requests include the selected organization ID as `x-organization-id`. The database accepts that organization only when the authenticated user has an active membership.
-
-### Important deployment sequence
-
-1. Run migration `004_multi_organization.sql` in Supabase.
-2. Bootstrap the Platform Admin.
-3. Deploy this code to Vercel.
-4. Log in and verify the Organization selector.
-5. Verify the existing AuditOps Demo organization and data.
-6. Create a second test organization.
-7. Add a test membership to the second organization.
-8. Switch organizations and verify that Tasks, Categories, Task Types and other organization-owned data remain isolated.
-
-This phase intentionally keeps the legacy `user_profiles.organization_id` column so the application can be migrated incrementally without destroying existing data.
+`user_profiles` is retained for compatibility with existing AuditOps code. New authorization and directory management use `users`, `organization_memberships`, and `platform_users`.

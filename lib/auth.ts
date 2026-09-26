@@ -26,10 +26,7 @@ function getActiveOrganizationId(): string | null {
 
 export function setActiveOrganizationId(organizationId: string) {
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(
-      ACTIVE_ORGANIZATION_STORAGE_KEY,
-      organizationId
-    );
+    window.localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, organizationId);
   }
 }
 
@@ -61,33 +58,32 @@ export async function getCurrentProfile() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { user: null, profile: null, organization: null, platformRole: null };
+  if (!user) {
+    return { user: null, profile: null, organization: null, platformRole: null };
+  }
 
-  const [{ data: baseProfile }, { data: platformUser }] =
-    await Promise.all([
-      supabase
-        .from("user_profiles")
-        .select(
-          "id, organization_id, full_name, job_title, role, status"
-        )
-        .eq("id", user.id)
-        .maybeSingle(),
-      supabase
-        .from("platform_users")
-        .select("user_id,role,status")
-        .eq("user_id", user.id)
-        .eq("status", "Active")
-        .maybeSingle(),
-    ]);
+  const [{ data: appUser }, { data: platformUser }] = await Promise.all([
+    supabase
+      .from("users")
+      .select(
+        "id,email,full_name,job_title,status,email_verified_at,last_login_at,created_at"
+      )
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("platform_users")
+      .select("user_id,role,status")
+      .eq("user_id", user.id)
+      .eq("status", "Active")
+      .maybeSingle(),
+  ]);
 
-  const platformRole = platformUser?.role || null;
-
-  if (!baseProfile) {
+  if (!appUser) {
     return {
       user,
       profile: null,
       organization: null,
-      platformRole,
+      platformRole: platformUser?.role || null,
     };
   }
 
@@ -97,26 +93,26 @@ export async function getCurrentProfile() {
       "id,organization_id,role,status,is_default,organization:organizations!organization_id(id,name,slug,industry,timezone,status,plan)"
     )
     .eq("user_id", user.id)
-    .eq("status", "Active");
+    .eq("status", "Active")
+    .order("is_default", { ascending: false });
 
   const activeRequested = getActiveOrganizationId();
-
-  let membership =
-    memberships?.find(
-      (item) => item.organization_id === activeRequested
-    ) ||
+  const membership =
+    memberships?.find((item) => item.organization_id === activeRequested) ||
     memberships?.find((item) => item.is_default) ||
-    memberships?.find(
-      (item) => item.organization_id === baseProfile.organization_id
-    ) ||
     memberships?.[0];
 
   if (!membership) {
     return {
       user,
-      profile: baseProfile,
+      profile: {
+        ...appUser,
+        organization_id: null,
+        role: null,
+        membership_id: null,
+      },
       organization: null,
-      platformRole,
+      platformRole: platformUser?.role || null,
     };
   }
 
@@ -130,28 +126,28 @@ export async function getCurrentProfile() {
   return {
     user,
     profile: {
-      ...baseProfile,
+      ...appUser,
       organization_id: membership.organization_id,
       role: membership.role,
-      status: membership.status,
       membership_id: membership.id,
     },
     organization: membership.organization || null,
-    platformRole,
+    platformRole: platformUser?.role || null,
   };
 }
 
-export async function getOrganizationMemberships(): Promise<
-  OrganizationMembership[]
-> {
+export async function getOrganizationMemberships(): Promise<OrganizationMembership[]> {
   const supabase = createClient();
+  const { data: authData } = await supabase.auth.getUser();
+
+  if (!authData.user) return [];
 
   const { data, error } = await supabase
     .from("organization_memberships")
     .select(
       "id,organization_id,role,status,is_default,organization:organizations!organization_id(id,name,slug,industry,timezone,status,plan)"
     )
-    .eq("user_id", (await supabase.auth.getUser()).data.user?.id || "")
+    .eq("user_id", authData.user.id)
     .eq("status", "Active")
     .order("is_default", { ascending: false });
 

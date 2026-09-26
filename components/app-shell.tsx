@@ -251,6 +251,18 @@ export default function AppShell({
                 icon={Building2}
                 active={pathname.startsWith("/platform/organizations")}
               />
+              <NavItem
+                href="/platform/users"
+                label="Platform Admins"
+                icon={Users}
+                active={pathname.startsWith("/platform/users")}
+              />
+              <NavItem
+                href="/platform/directory"
+                label="User Directory"
+                icon={Users}
+                active={pathname.startsWith("/platform/directory")}
+              />
             </>
           )}
         </div>

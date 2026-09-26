@@ -1,112 +1,57 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import {
-  Check,
-  Loader2,
-  Shield,
-  UserPlus,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Loader2, Pencil, Shield, UserPlus, X } from "lucide-react";
 import AppShell from "@/components/app-shell";
-import { createClient } from "@/lib/auth";
-import { ROLE_OPTIONS } from "@/lib/rbac";
+import { getCurrentProfile } from "@/lib/auth";
+import { ROLE_OPTIONS, isAdmin } from "@/lib/rbac";
 
 type UserRow = {
+  id: string;
   user_id: string;
-  email: string | null;
-  full_name: string | null;
-  job_title: string | null;
+  organization_id: string;
   role: string;
   status: string;
-  created_at: string;
+  user: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    job_title: string | null;
+    status: string;
+    last_login_at: string | null;
+    created_at: string;
+  } | null;
 };
 
 export default function UsersPage() {
+  const [profile, setProfile] = useState<any>(null);
   const [rows, setRows] = useState<UserRow[]>([]);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentRole, setCurrentRole] = useState<string | null>(null);
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
+  const [modal, setModal] = useState<"invite" | "existing" | "edit" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState<UserRow | null>(null);
   const [email, setEmail] = useState("");
-  const [newRole, setNewRole] = useState("Contributor");
-  const [newStatus, setNewStatus] = useState("Active");
-  const [adding, setAdding] = useState(false);
-
-  const supabase = createClient();
-
-  async function getActiveOrganizationId() {
-    const local = window.localStorage.getItem("auditops_active_organization");
-    if (local) return local;
-
-    const { data, error: rpcError } = await supabase.rpc("current_org_id");
-    if (rpcError) throw rpcError;
-    return data as string | null;
-  }
+  const [fullName, setFullName] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [role, setRole] = useState("Contributor");
 
   async function load() {
     setLoading(true);
     setError("");
+    const current = await getCurrentProfile();
+    setProfile(current.profile);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setError("You are not signed in.");
+    if (!current.profile || !isAdmin(current.profile.role)) {
       setLoading(false);
       return;
     }
 
-    setCurrentUserId(user.id);
-
-    try {
-      const orgId = await getActiveOrganizationId();
-
-      if (!orgId) {
-        setError("No active organization is selected.");
-        setLoading(false);
-        return;
-      }
-
-      setOrganizationId(orgId);
-
-      const { data: role, error: roleError } = await supabase.rpc(
-        "current_user_role"
-      );
-
-      if (roleError) {
-        setError(roleError.message);
-        setLoading(false);
-        return;
-      }
-
-      setCurrentRole(role);
-
-      if (role !== "Organization Admin" && role !== "Platform Admin") {
-        setRows([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data, error: loadError } = await supabase.rpc(
-        "get_organization_members",
-        { target_org: orgId }
-      );
-
-      if (loadError) {
-        setError(loadError.message);
-        setRows([]);
-      } else {
-        setRows((data || []) as UserRow[]);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to load users.");
-    }
-
+    const response = await fetch("/api/users", { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) setError(result.error || "Unable to load users.");
+    else setRows(result.users || []);
     setLoading(false);
   }
 
@@ -114,88 +59,98 @@ export default function UsersPage() {
     load();
   }, []);
 
-  async function saveMembership(
-    userId: string,
-    changes: { role?: string; status?: string }
-  ) {
-    if (!organizationId) return;
-
-    if (userId === currentUserId) {
-      setError("You cannot change your own organization role or status.");
-      return;
-    }
-
-    setSaving(userId);
-    setMessage("");
+  function openInvite() {
     setError("");
-
-    const { error: updateError } = await supabase
-      .from("organization_memberships")
-      .update(changes)
-      .eq("organization_id", organizationId)
-      .eq("user_id", userId);
-
-    if (updateError) {
-      setError(updateError.message);
-    } else {
-      setMessage("Organization membership updated successfully.");
-    }
-
-    await load();
-    setSaving(null);
+    setMessage("");
+    setEmail("");
+    setFullName("");
+    setJobTitle("");
+    setRole("Contributor");
+    setModal("invite");
   }
 
-  async function addExistingUser(event: FormEvent) {
-    event.preventDefault();
-
-    if (!organizationId) {
-      setError("No active organization is selected.");
-      return;
-    }
-
-    if (!email.trim()) {
-      setError("Enter the user's email address.");
-      return;
-    }
-
-    setAdding(true);
-    setMessage("");
+  function openExisting() {
     setError("");
+    setMessage("");
+    setEmail("");
+    setRole("Contributor");
+    setModal("existing");
+  }
 
-    const response = await fetch("/api/users/membership", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-organization-id": organizationId,
-      },
-      body: JSON.stringify({
-        email: email.trim(),
-        role: newRole,
-        status: newStatus,
-      }),
+  function openEdit(row: UserRow) {
+    setSelected(row);
+    setFullName(row.user?.full_name || "");
+    setJobTitle(row.user?.job_title || "");
+    setRole(row.role);
+    setModal("edit");
+    setError("");
+    setMessage("");
+  }
+
+  async function submit() {
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      if (modal === "invite" || modal === "existing") {
+        const response = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: modal === "existing" ? "add_existing" : "invite",
+            email,
+            fullName,
+            jobTitle,
+            role,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to save user.");
+        setMessage(result.message || "User saved successfully.");
+        setModal(null);
+        await load();
+      } else if (modal === "edit" && selected) {
+        const response = await fetch(`/api/users/${selected.user_id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullName, jobTitle, role }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to update user.");
+        setMessage("User updated successfully.");
+        setModal(null);
+        await load();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save user.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateMembership(row: UserRow, field: "role" | "status", value: string) {
+    setError("");
+    const response = await fetch(`/api/users/${row.user_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
     });
-
     const result = await response.json();
-
-    if (!response.ok) {
-      setError(result.error || "Unable to add user.");
-    } else {
-      setMessage(
-        `${email.trim()} has been added to this organization.`
-      );
-      setEmail("");
-      setNewRole("Contributor");
-      setNewStatus("Active");
-      setShowAdd(false);
+    if (!response.ok) setError(result.error || "Unable to update user.");
+    else {
+      setMessage("User updated successfully.");
       await load();
     }
-
-    setAdding(false);
   }
 
-  const canManage =
-    currentRole === "Organization Admin" ||
-    currentRole === "Platform Admin";
+  if (loading) {
+    return <AppShell requiredPermission="users"><div className="max-w-6xl mx-auto bg-white border rounded-xl p-8 text-sm text-gray-500">Loading users…</div></AppShell>;
+  }
+
+  if (!profile || !isAdmin(profile.role)) {
+    return <AppShell requiredPermission="users"><div className="max-w-6xl mx-auto bg-white border rounded-xl p-8"><h1 className="text-xl font-semibold">Access denied</h1><p className="text-sm text-gray-500 mt-2">Only Organization Admins can manage users.</p></div></AppShell>;
+  }
 
   return (
     <AppShell requiredPermission="users">
@@ -203,267 +158,61 @@ export default function UsersPage() {
         <div className="flex items-end justify-between mb-7">
           <div>
             <h1 className="text-2xl font-semibold">Users & Roles</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage organization membership and organization-specific roles.
-            </p>
+            <p className="text-sm text-gray-500 mt-1">Manage organization access from the AuditOps portal.</p>
           </div>
-
-          {canManage && (
-            <button
-              type="button"
-              onClick={() => {
-                setShowAdd((value) => !value);
-                setError("");
-              }}
-              className="rounded-lg bg-slate-950 text-white px-4 py-2 text-sm flex items-center gap-2 hover:bg-slate-800"
-            >
-              <UserPlus size={16} />
-              Add Existing User
-            </button>
-          )}
+          <div className="flex gap-2">
+            <button onClick={openExisting} className="rounded-lg border bg-white px-4 py-2 text-sm flex items-center gap-2"><UserPlus size={16}/> Add Existing User</button>
+            <button onClick={openInvite} className="rounded-lg bg-slate-950 text-white px-4 py-2 text-sm flex items-center gap-2"><UserPlus size={16}/> Invite New User</button>
+          </div>
         </div>
 
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-5 text-sm text-blue-800 flex gap-3">
           <Shield size={18} className="shrink-0 mt-0.5" />
-          <div>
-            <strong>Organization-level RBAC.</strong>{" "}
-            A user can belong to multiple organizations and have a different
-            role in each organization.
-          </div>
+          <div><strong>Application-managed users.</strong> User directory records are managed by AuditOps. Supabase Auth is used only for authentication.</div>
         </div>
 
-        {message && (
-          <div className="mb-5 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 p-3 text-sm flex items-center gap-2">
-            <Check size={15} />
-            {message}
-          </div>
-        )}
-
-        {error && (
-          <div className="mb-5 rounded-lg bg-red-50 border border-red-100 text-red-700 p-3 text-sm">
-            {error}
-          </div>
-        )}
-
-        {showAdd && canManage && (
-          <form
-            onSubmit={addExistingUser}
-            className="bg-white border rounded-xl p-5 mb-5"
-          >
-            <h2 className="font-semibold">Add existing AuditOps user</h2>
-            <p className="text-xs text-gray-500 mt-1 mb-4">
-              The user must already have an AuditOps login. This adds the login
-              to the currently selected organization; it does not create a new
-              Auth account.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-              <label className="md:col-span-2">
-                <span className="text-sm font-medium">Email</span>
-                <input
-                  required
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="mt-1.5 w-full border rounded-lg px-3 py-2.5"
-                  placeholder="user@company.com"
-                />
-              </label>
-
-              <label>
-                <span className="text-sm font-medium">Role</span>
-                <select
-                  value={newRole}
-                  onChange={(event) => setNewRole(event.target.value)}
-                  className="mt-1.5 w-full border rounded-lg px-3 py-2.5 bg-white"
-                >
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                <span className="text-sm font-medium">Status</span>
-                <select
-                  value={newStatus}
-                  onChange={(event) => setNewStatus(event.target.value)}
-                  className="mt-1.5 w-full border rounded-lg px-3 py-2.5 bg-white"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Suspended">Suspended</option>
-                  <option value="Invited">Invited</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                type="button"
-                onClick={() => setShowAdd(false)}
-                className="border rounded-lg px-4 py-2 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={adding}
-                className="rounded-lg bg-slate-950 text-white px-4 py-2 text-sm disabled:opacity-60 flex items-center gap-2"
-              >
-                {adding && <Loader2 size={15} className="animate-spin" />}
-                {adding ? "Adding…" : "Add to Organization"}
-              </button>
-            </div>
-          </form>
-        )}
+        {message && <div className="mb-5 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 p-3 text-sm flex items-center gap-2"><Check size={15}/>{message}</div>}
+        {error && <div className="mb-5 rounded-lg bg-red-50 border border-red-100 text-red-700 p-3 text-sm">{error}</div>}
 
         <div className="bg-white border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b">
-            <h2 className="font-semibold">Organization members</h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Roles and status below apply only to the currently selected
-              organization.
-            </p>
+          <div className="grid grid-cols-[1.6fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-3 border-b text-[11px] uppercase tracking-wide text-gray-400 font-semibold">
+            <div>User</div><div>Email</div><div>Role</div><div>Status</div><div />
           </div>
-
-          {loading ? (
-            <div className="p-8 text-sm text-gray-500">
-              Loading organization members…
-            </div>
-          ) : !canManage ? (
-            <div className="p-8 text-sm text-gray-500">
-              Only Organization Admins can manage users and roles.
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="p-8 text-sm text-gray-500">
-              No organization users found.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {rows.map((user) => {
-                const isCurrentUser = user.user_id === currentUserId;
-                const initials = (user.full_name || "U")
-                  .split(" ")
-                  .map((x) => x[0])
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase();
-
-                return (
-                  <div
-                    key={user.user_id}
-                    className="px-5 py-4 flex items-center gap-5"
-                  >
-                    <div className="h-9 w-9 rounded-full bg-gray-100 grid place-items-center text-xs font-semibold shrink-0">
-                      {initials}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm flex items-center gap-2">
-                        {user.full_name || "Unnamed user"}
-                        {isCurrentUser && (
-                          <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">
-                            You
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1 truncate">
-                        {user.email || "No email"}
-                        {user.job_title ? ` · ${user.job_title}` : ""}
-                      </div>
-                    </div>
-
-                    <select
-                      value={user.role}
-                      disabled={saving === user.user_id || isCurrentUser}
-                      onChange={(event) =>
-                        saveMembership(user.user_id, {
-                          role: event.target.value,
-                        })
-                      }
-                      className="border rounded-lg px-3 py-2 text-sm bg-white disabled:bg-gray-100 disabled:text-gray-400"
-                    >
-                      {ROLE_OPTIONS.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={user.status}
-                      disabled={saving === user.user_id || isCurrentUser}
-                      onChange={(event) =>
-                        saveMembership(user.user_id, {
-                          status: event.target.value,
-                        })
-                      }
-                      className="border rounded-lg px-3 py-2 text-sm bg-white w-32 disabled:bg-gray-100 disabled:text-gray-400"
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Suspended">Suspended</option>
-                      <option value="Invited">Invited</option>
-                    </select>
-
-                    {saving === user.user_id && (
-                      <Loader2
-                        size={16}
-                        className="animate-spin text-gray-400"
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {rows.length === 0 ? <div className="p-8 text-sm text-gray-500">No organization users found.</div> : <div className="divide-y">
+            {rows.map((row) => {
+              const isCurrent = row.user_id === profile.id;
+              return <div key={row.id} className="grid grid-cols-[1.6fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center">
+                <div className="min-w-0"><div className="font-medium text-sm flex items-center gap-2">{row.user?.full_name || "Unnamed user"}{isCurrent && <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">You</span>}</div><div className="text-xs text-gray-500 mt-1">{row.user?.job_title || "No job title"}</div></div>
+                <div className="text-sm text-gray-600 truncate">{row.user?.email || "—"}</div>
+                <select value={row.role} disabled={isCurrent} onChange={(e) => updateMembership(row, "role", e.target.value)} className="border rounded-lg px-2.5 py-2 text-sm bg-white disabled:bg-gray-100">{ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}</select>
+                <select value={row.status} disabled={isCurrent} onChange={(e) => updateMembership(row, "status", e.target.value)} className="border rounded-lg px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"><option>Active</option><option>Invited</option><option>Suspended</option></select>
+                <button onClick={() => openEdit(row)} className="p-2 rounded-lg hover:bg-gray-100" title="Edit user"><Pencil size={16}/></button>
+              </div>;
+            })}
+          </div>}
         </div>
 
         <div className="mt-6 bg-gray-50 border rounded-xl p-5">
-          <h3 className="font-semibold text-sm">Available roles</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-            <RoleDescription
-              role="Organization Admin"
-              description="Full access including organization and user administration."
-            />
-            <RoleDescription
-              role="Compliance Manager"
-              description="Manages compliance activities, policies, evidence, vendors and findings."
-            />
-            <RoleDescription
-              role="Security Manager"
-              description="Manages vulnerabilities, assets, access reviews and security findings."
-            />
-            <RoleDescription
-              role="IT Manager"
-              description="Manages assets, vulnerabilities and access reviews."
-            />
-            <RoleDescription
-              role="Contributor"
-              description="Performs day-to-day compliance and security activities."
-            />
-            <RoleDescription
-              role="Auditor / Read Only"
-              description="View-only access for audit and assessment activities."
-            />
-          </div>
+          <h3 className="font-semibold text-sm">How user access works</h3>
+          <p className="text-xs text-gray-500 mt-2">One AuditOps user can belong to multiple organizations. The role shown here applies only to the current organization.</p>
         </div>
       </div>
+
+      {modal && <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg bg-white rounded-xl shadow-xl">
+          <div className="flex items-center justify-between px-6 py-4 border-b"><div><h2 className="font-semibold">{modal === "invite" ? "Invite New User" : modal === "existing" ? "Add Existing User" : "Edit User"}</h2><p className="text-xs text-gray-500 mt-1">{modal === "existing" ? "Add an existing AuditOps account to this organization." : "Manage the user from the AuditOps portal."}</p></div><button onClick={() => setModal(null)}><X size={19}/></button></div>
+          <div className="p-6 space-y-4">
+            <Field label="Email"><input disabled={modal === "edit"} type="email" value={modal === "edit" ? selected?.user?.email || "" : email} onChange={(e) => setEmail(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" /></Field>
+            {modal !== "existing" && <><Field label="Full Name"><input value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" /></Field><Field label="Job Title"><input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" /></Field></>}
+            <Field label="Organization Role"><select value={role} onChange={(e) => setRole(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">{ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
+            <button disabled={saving} onClick={submit} className="w-full rounded-lg bg-slate-950 text-white px-4 py-2.5 text-sm disabled:opacity-50">{saving ? "Saving…" : modal === "invite" ? "Send Invitation" : modal === "existing" ? "Add User" : "Save Changes"}</button>
+          </div>
+        </div>
+      </div>}
     </AppShell>
   );
 }
 
-function RoleDescription({
-  role,
-  description,
-}: {
-  role: string;
-  description: string;
-}) {
-  return (
-    <div className="bg-white border rounded-lg p-3">
-      <div className="text-sm font-medium">{role}</div>
-      <div className="text-xs text-gray-500 mt-1">{description}</div>
-    </div>
-  );
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div><label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>{children}</div>;
 }

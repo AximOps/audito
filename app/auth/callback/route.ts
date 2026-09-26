@@ -1,26 +1,17 @@
 import { NextResponse } from "next/server";
-import {
-  createServerClient,
-  type CookieOptions,
-} from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { createAdminClient } from "@/lib/admin";
 
-export async function GET(
-  request: Request
-) {
+export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-
-  const code =
-    requestUrl.searchParams.get("code");
+  const code = requestUrl.searchParams.get("code");
 
   if (!code) {
-    return NextResponse.redirect(
-      new URL("/login?error=missing_code", requestUrl.origin)
-    );
+    return NextResponse.redirect(new URL("/login?error=missing_code", requestUrl.origin));
   }
 
   const cookieStore = cookies();
-
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -29,158 +20,100 @@ export async function GET(
         getAll() {
           return cookieStore.getAll();
         },
-
-        setAll(
-          cookiesToSet: {
-            name: string;
-            value: string;
-            options: CookieOptions;
-          }[]
-        ) {
+        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           try {
-            cookiesToSet.forEach(
-              ({ name, value, options }) => {
-                cookieStore.set({
-                  name,
-                  value,
-                  ...options,
-                });
-              }
-            );
-          } catch {
-            // Ignore cookie errors where cookies
-            // cannot be modified in this context.
-          }
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set({ name, value, ...options });
+            });
+          } catch {}
         },
       },
     }
   );
 
-  /*
-   * Exchange invitation code for a Supabase session.
-   */
-  const {
-    error: exchangeError,
-  } =
-    await supabase.auth.exchangeCodeForSession(
-      code
-    );
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
   if (exchangeError) {
-    console.error(
-      "Auth callback error:",
-      exchangeError
-    );
-
     return NextResponse.redirect(
-      new URL(
-        `/login?error=${encodeURIComponent(
-          exchangeError.message
-        )}`,
-        requestUrl.origin
-      )
+      new URL(`/login?error=${encodeURIComponent(exchangeError.message)}`, requestUrl.origin)
     );
   }
 
-  /*
-   * Get authenticated user.
-   */
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.redirect(
-      new URL(
-        "/login?error=session_error",
-        requestUrl.origin
-      )
-    );
+    return NextResponse.redirect(new URL("/login?error=session_error", requestUrl.origin));
   }
 
-  /*
-   * Retrieve the user's AuditOps profile and memberships.
-   */
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("id, organization_id, role, status")
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: existingUser } = await admin
+    .from("users")
+    .select("id,status")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profile) {
-    const now = new Date().toISOString();
-
-    if (profile.status === "Invited") {
-      await supabase
-        .from("user_profiles")
-        .update({
-          status: "Active",
-          last_login_at: now,
-        })
-        .eq("id", user.id);
-    } else {
-      await supabase
-        .from("user_profiles")
-        .update({ last_login_at: now })
-        .eq("id", user.id);
-    }
-
-    await supabase
-      .from("organization_memberships")
-      .update({
-        status: "Active",
-        updated_at: now,
-      })
-      .eq("user_id", user.id)
-      .eq("status", "Invited");
-
-    const { data: defaultMembership } = await supabase
-      .from("organization_memberships")
-      .select("organization_id")
-      .eq("user_id", user.id)
-      .eq("status", "Active")
-      .eq("is_default", true)
-      .maybeSingle();
-
-    if (defaultMembership?.organization_id) {
-      const response = NextResponse.redirect(
-        new URL("/dashboard", requestUrl.origin)
-      );
-
-      response.cookies.set({
-        name: "auditops_active_organization",
-        value: defaultMembership.organization_id,
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 30,
-      });
-
-      return response;
-    }
-
-    return NextResponse.redirect(
-      new URL("/dashboard", requestUrl.origin)
-    );
+  if (existingUser?.status === "Disabled") {
+    await supabase.auth.signOut();
+    return NextResponse.redirect(new URL("/login?error=account_disabled", requestUrl.origin));
   }
 
-  /*
-   * ---------------------------------------------------------
-   * Fallback for users who were created outside the
-   * AuditOps invitation workflow.
-   * ---------------------------------------------------------
-   *
-   * We intentionally DO NOT automatically create an
-   * organization membership here.
-   *
-   * An organization must be assigned by an admin.
-   */
+  if (!existingUser) {
+    await admin.from("users").insert({
+      id: user.id,
+      email: (user.email || "").toLowerCase(),
+      full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+      job_title: user.user_metadata?.job_title || null,
+      status: "Active",
+      email_verified_at: user.email_confirmed_at || now,
+      last_login_at: now,
+    });
+  } else {
+    await admin
+      .from("users")
+      .update({
+        status: "Active",
+        email: (user.email || "").toLowerCase(),
+        email_verified_at: user.email_confirmed_at || now,
+        last_login_at: now,
+        updated_at: now,
+      })
+      .eq("id", user.id);
+  }
 
-  return NextResponse.redirect(
-    new URL(
-      "/login?error=no_organization",
-      requestUrl.origin
-    )
-  );
+  await admin
+    .from("organization_memberships")
+    .update({ status: "Active", updated_at: now })
+    .eq("user_id", user.id)
+    .eq("status", "Invited");
+
+  await admin
+    .from("user_profiles")
+    .update({ status: "Active", last_login_at: now })
+    .eq("id", user.id);
+
+  const { data: defaultMembership } = await admin
+    .from("organization_memberships")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .eq("status", "Active")
+    .order("is_default", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const response = NextResponse.redirect(new URL("/dashboard", requestUrl.origin));
+
+  if (defaultMembership?.organization_id) {
+    response.cookies.set({
+      name: "auditops_active_organization",
+      value: defaultMembership.organization_id,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+  }
+
+  return response;
 }

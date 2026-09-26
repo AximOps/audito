@@ -30,7 +30,9 @@ export async function getServerAuthContext() {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set({ name, value, ...options })
             );
-          } catch {}
+          } catch {
+            // Cookie mutation can be unavailable in some server contexts.
+          }
         },
       },
     }
@@ -47,27 +49,51 @@ export async function getServerAuthContext() {
       user: null,
       profile: null,
       organization: null,
+      platformRole: null,
       error: "Unauthorized.",
     };
   }
 
-  const { data: baseProfile, error: profileError } = await supabase
-    .from("user_profiles")
-    .select("id,organization_id,full_name,job_title,role,status")
-    .eq("id", user.id)
-    .maybeSingle();
+  const [{ data: appUser, error: userError }, { data: platformUser }] =
+    await Promise.all([
+      supabase
+        .from("users")
+        .select(
+          "id,email,full_name,job_title,status,email_verified_at,last_login_at,created_at"
+        )
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("platform_users")
+        .select("user_id,role,status")
+        .eq("user_id", user.id)
+        .eq("status", "Active")
+        .maybeSingle(),
+    ]);
 
-  if (profileError || !baseProfile) {
+  if (userError || !appUser) {
     return {
       supabase,
       user,
       profile: null,
       organization: null,
-      error: "Your AuditOps user profile could not be found.",
+      platformRole: platformUser?.role || null,
+      error: "Your AuditOps user directory record could not be found.",
     };
   }
 
-  const { data: membership } = await supabase
+  if (appUser.status === "Disabled") {
+    return {
+      supabase,
+      user,
+      profile: null,
+      organization: null,
+      platformRole: null,
+      error: "Your AuditOps account is disabled.",
+    };
+  }
+
+  const { data: memberships } = await supabase
     .from("organization_memberships")
     .select(
       "id,organization_id,role,status,is_default,organization:organizations!organization_id(id,name,slug,industry,timezone,status,plan)"
@@ -75,35 +101,37 @@ export async function getServerAuthContext() {
     .eq("user_id", user.id)
     .eq("status", "Active")
     .order("is_default", { ascending: false })
-    .limit(10);
+    .limit(20);
 
   const selected =
-    membership?.find(
+    memberships?.find(
       (item) => item.organization_id === activeOrganizationId
-    ) ||
-    membership?.find((item) => item.is_default) ||
-    membership?.find(
-      (item) => item.organization_id === baseProfile.organization_id
-    ) ||
-    membership?.[0];
+    ) || memberships?.find((item) => item.is_default) || memberships?.[0];
 
   if (!selected) {
     return {
       supabase,
       user,
-      profile: null,
+      profile: {
+        ...appUser,
+        organization_id: null,
+        role: null,
+        membership_id: null,
+      },
       organization: null,
-      error: "Your AuditOps organization membership could not be found.",
+      platformRole: platformUser?.role || null,
+      error: null,
     };
   }
 
-  if (selected.status !== "Active") {
+  if (selected.organization?.[0]?.status !== "Active") {
     return {
       supabase,
       user,
       profile: null,
       organization: selected.organization,
-      error: "Your AuditOps organization membership is not active.",
+      platformRole: platformUser?.role || null,
+      error: "Your AuditOps organization is not active.",
     };
   }
 
@@ -111,13 +139,13 @@ export async function getServerAuthContext() {
     supabase,
     user,
     profile: {
-      ...baseProfile,
+      ...appUser,
       organization_id: selected.organization_id,
       role: selected.role,
-      status: selected.status,
       membership_id: selected.id,
     },
     organization: selected.organization || null,
+    platformRole: platformUser?.role || null,
     error: null,
   };
 }
