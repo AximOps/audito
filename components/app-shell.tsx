@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertTriangle, BookOpen, Building2, CheckSquare, ChevronDown, ClipboardCheck, FileText, LayoutDashboard, LogOut, Search, Server, Settings, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckSquare, ChevronDown, ClipboardCheck, FileText, LayoutDashboard, LogOut, Search, Server, ShieldCheck, Users, Tags } from "lucide-react";
 import { createClient, getCurrentProfile } from "@/lib/auth";
 import { can, PERMISSIONS } from "@/lib/rbac";
 
@@ -19,6 +19,7 @@ const nav = [
 
 const adminNav = [
   { href: "/settings/users", label: "Users & Roles", icon: Users, permission: "users" as const },
+  { href: "/settings/activity-categories", label: "Activity Categories", icon: Tags, permission: "activityCategories" as const },
 ];
 
 export default function AppShell({ children, requiredPermission }: { children: React.ReactNode; requiredPermission?: keyof typeof PERMISSIONS }) {

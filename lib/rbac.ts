@@ -28,7 +28,8 @@ export type Permission =
   | "vendors"
   | "reports"
   | "users"
-  | "auditLog";
+  | "auditLog"
+  | "activityCategories";
 
 export const PERMISSIONS: Record<Permission, readonly Role[]> = {
   dashboard: ROLE_OPTIONS,
@@ -110,6 +111,11 @@ export const PERMISSIONS: Record<Permission, readonly Role[]> = {
 
   users: [
     "Organization Admin",
+  ],
+
+  activityCategories: [
+    "Organization Admin",
+    "Compliance Manager",
   ],
 
   auditLog: [

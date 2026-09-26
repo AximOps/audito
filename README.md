@@ -12,7 +12,7 @@ AuditOps is a compliance operations platform for managing activities, evidence, 
 - `/login` uses Supabase email/password authentication.
 - Protected application routes require an authenticated Supabase user.
 - `/settings/users` is visible only to Organization Admins.
-- RBAC is enforced in the UI, server API routes, and PostgreSQL RLS policies.
+- RBAC is enforced in the UI and by PostgreSQL RLS policies.
 - Initial roles: Organization Admin, Compliance Manager, Security Manager, IT Manager, Contributor, Auditor / Read Only.
 
 ## Setup
@@ -24,16 +24,4 @@ AuditOps is a compliance operations platform for managing activities, evidence, 
 6. Create an organization and matching `user_profiles` row for the user's auth UUID, with role `Organization Admin` for the first administrator.
 7. `npm run dev`
 
-## Current CRUD modules
-
-- Compliance Activities: create, edit, delete, search, filter, owner/reviewer assignment, status, priority, frequency and due dates.
-- User invitations: Organization Admins can invite users through `/settings/users`.
-- Activity changes are written to `audit_logs`.
-
-### Activity API
-
-- `POST /api/activities` — create an activity.
-- `PATCH /api/activities/:id` — update an activity.
-- `DELETE /api/activities/:id` — delete an activity.
-- These routes require an authenticated active AuditOps profile and enforce organization/role checks server-side.
-- `SUPABASE_SERVICE_ROLE_KEY` is required on the server for activity writes and audit logging. Never expose it as a `NEXT_PUBLIC_*` variable.
+User invitations and automated onboarding are intentionally deferred to the next pass.
