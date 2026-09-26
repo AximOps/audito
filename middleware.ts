@@ -45,7 +45,12 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  const publicRoutes = ["/login"];
+  // These routes must remain accessible before authentication.
+  const publicRoutes = [
+    "/login",
+    "/forgot-password",
+    "/auth/reset-password",
+  ];
 
   const isPublicRoute = publicRoutes.some(
     (route) =>
@@ -59,6 +64,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Do not redirect the password-reset route even when a recovery
+  // session has been established. The reset page must be able to
+  // consume the recovery session and let the user choose a new password.
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";

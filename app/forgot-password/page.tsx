@@ -1,52 +1,37 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/auth";
 
-export default function LoginPage() {
-  const router = useRouter();
-  const [resetSuccess, setResetSuccess] = useState(false);
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    const reset = new URLSearchParams(window.location.search).get("reset");
-
-    if (reset === "success") {
-      setResetSuccess(true);
-      setMessage("Your password was updated. Please sign in with your new password.");
-    }
-
-    createClient().auth.getUser().then(({ data }) => {
-      if (data.user) router.replace("/dashboard");
-    });
-  }, [router]);
+  const [error, setError] = useState("");
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setMessage("");
+    setError("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const redirectTo = `${window.location.origin}/auth/reset-password`;
 
-    if (error) {
-      setMessage(error.message);
-      setLoading(false);
-      return;
+    const { error: resetError } =
+      await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
+    if (resetError) {
+      setError(resetError.message);
+    } else {
+      setMessage(
+        "If an account exists for this email address, a password reset link has been sent."
+      );
     }
 
-    const next = new URLSearchParams(window.location.search).get("next");
-    router.replace(next || "/dashboard");
-    router.refresh();
+    setLoading(false);
   }
 
   return (
@@ -77,9 +62,17 @@ export default function LoginPage() {
           </div>
 
           <div className="bg-white border rounded-2xl p-8 shadow-sm">
-            <h2 className="text-2xl font-semibold">Sign in</h2>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
+            >
+              <ArrowLeft size={15} /> Back to sign in
+            </Link>
+
+            <h2 className="text-2xl font-semibold mt-6">Reset your password</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Access your compliance workspace.
+              Enter your email and we&apos;ll send you a secure password reset
+              link.
             </p>
 
             <form onSubmit={submit} className="mt-7 space-y-4">
@@ -96,36 +89,16 @@ export default function LoginPage() {
                 />
               </label>
 
-              <label className="block">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Password</span>
-                  <Link
-                    href="/forgot-password"
-                    className="text-xs text-slate-600 hover:text-slate-950 hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
+              {error && (
+                <div className="rounded-lg bg-red-50 border border-red-100 text-red-700 text-sm p-3">
+                  {error}
                 </div>
-                <input
-                  required
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1.5 w-full border rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-slate-200"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
-              </label>
+              )}
 
               {message && (
-                <div
-                  className={`rounded-lg text-sm p-3 ${
-                    resetSuccess
-                      ? "bg-emerald-50 border border-emerald-100 text-emerald-700"
-                      : "bg-red-50 border border-red-100 text-red-700"
-                  }`}
-                >
-                  {message}
+                <div className="rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 text-sm p-3 flex gap-2">
+                  <CheckCircle2 size={17} className="shrink-0 mt-0.5" />
+                  <span>{message}</span>
                 </div>
               )}
 
@@ -134,12 +107,13 @@ export default function LoginPage() {
                 className="w-full rounded-lg bg-slate-950 text-white py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {loading && <Loader2 size={16} className="animate-spin" />}
-                {loading ? "Signing in…" : "Sign in"}
+                {loading ? "Sending…" : "Send reset link"}
               </button>
             </form>
 
             <p className="text-xs text-gray-400 mt-6">
-              Accounts are provisioned by your AuditOps organization administrator.
+              For security, the page does not reveal whether an email address
+              has an AuditOps account.
             </p>
           </div>
         </div>
