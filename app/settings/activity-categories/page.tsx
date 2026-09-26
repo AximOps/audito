@@ -83,7 +83,7 @@ export default function ActivityCategoriesPage() {
       <div className="max-w-5xl mx-auto">
         <a href="/dashboard" className="text-sm text-gray-500">← Dashboard</a>
         <div className="flex justify-between items-end mt-5 mb-6">
-          <div><h1 className="text-2xl font-semibold">Activity Categories</h1><p className="text-sm text-gray-500 mt-1">Manage the categories available when creating compliance activities.</p></div>
+          <div><h1 className="text-2xl font-semibold">Task Categories</h1><p className="text-sm text-gray-500 mt-1">Manage the categories available when creating Tasks.</p></div>
           {canManage && <button onClick={openNew} className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm flex items-center gap-2"><Plus size={16}/> Add Category</button>}
         </div>
 

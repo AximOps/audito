@@ -25,3 +25,6 @@ AuditOps is a compliance operations platform for managing activities, evidence, 
 7. `npm run dev`
 
 User invitations and automated onboarding are intentionally deferred to the next pass.
+
+## Latest task enhancements
+Run `database/migrations/003_task_types.sql` after the activity categories migration. This adds organization-specific Task Types (Task, Change Request, Review), status/priority fields to the Task form, and Task detail/update support.

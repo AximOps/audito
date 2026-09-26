@@ -9,7 +9,7 @@ import { can, PERMISSIONS } from "@/lib/rbac";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard" as const },
-  { href: "/activities", label: "Activities", icon: ClipboardCheck, permission: "activities" as const },
+  { href: "/activities", label: "Tasks", icon: ClipboardCheck, permission: "activities" as const },
   { href: "/evidence", label: "Evidence", icon: FileText, permission: "evidence" as const },
   { href: "/policies", label: "Policies", icon: BookOpen, permission: "policies" as const },
   { href: "/vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle, permission: "vulnerabilities" as const },
@@ -19,7 +19,8 @@ const nav = [
 
 const adminNav = [
   { href: "/settings/users", label: "Users & Roles", icon: Users, permission: "users" as const },
-  { href: "/settings/activity-categories", label: "Activity Categories", icon: Tags, permission: "activityCategories" as const },
+  { href: "/settings/activity-categories", label: "Task Types", icon: Tags, permission: "activityCategories" as const },
+  { href: "/settings/activity-categories", label: "Task Categories", icon: Tags, permission: "activityCategories" as const },
 ];
 
 export default function AppShell({ children, requiredPermission }: { children: React.ReactNode; requiredPermission?: keyof typeof PERMISSIONS }) {
