@@ -1,31 +1,41 @@
-# AuditOps Organization Management + Subscription Plans
+# AuditOps Users & Memberships — Subscription Enforcement Patch
 
-This overlay adds organization lifecycle management and centralized subscription entitlements.
+This overlay adds server-side subscription enforcement for the **Users & Memberships** module.
 
-## Organization management
+## Included
 
-- Edit organization name, slug, subscription, timezone, industry and status.
-- Suspend active organizations.
-- Reactivate suspended organizations.
-- Soft-remove organizations. Compliance data and audit history are retained.
-- Platform Admin authorization is enforced server-side.
-- Organization changes are written to `audit_logs`.
+- Central `lib/subscription-enforcement.ts` utility.
+- FREE / Standard / Pro / Enterprise user limits from the existing subscription-plan model.
+- User usage calculation based on organization memberships with `Active` or `Invited` membership status and application users with `Active` or `Invited` status.
+- Server-side enforcement when adding an existing user or inviting a new user.
+- `/api/users` now returns subscription usage information.
+- Existing user-management UI updated to show plan usage and remaining capacity.
+- `PLAN_LIMIT_REACHED` API responses with plan, current usage, and configured limit.
 
-## Subscription plans
+## Prerequisite
 
-- FREE
-- Standard
-- Pro
-- Enterprise
+Apply the earlier organization/subscription patch first, including migrations 007 and 008, and ensure `public.organizations.subscription` is populated.
 
-The subscription catalog includes limits and feature entitlements for users, frameworks, tasks, assets, vendors, policies, findings, vulnerabilities, evidence, audit logs, API, webhooks, SSO, SCIM and enterprise capabilities.
+This patch does not add or modify database tables.
 
-## Installation
+## User counting
 
-1. Apply `database/migrations/007_organization_management.sql` if it has not already been applied.
-2. Apply `database/migrations/008_subscription_plans.sql`.
-3. Copy the `app`, `components`, and `lib` files into the existing AuditOps project.
-4. Keep your existing `server-auth` and admin client implementations.
-5. Build and deploy.
+The current organization user count includes memberships with status `Active` or `Invited` whose application-user status is `Active` or `Invited`. Suspended/disabled users do not consume the configured user capacity.
 
-`organizations.subscription` remains the organization's selected plan. The `subscription_plans` table is the database catalog of plan entitlements.
+## Response behavior
+
+When a new user would exceed the organization's plan limit, the API returns HTTP `402` with:
+
+```json
+{
+  "code": "PLAN_LIMIT_REACHED",
+  "resource": "users",
+  "current": 3,
+  "limit": 3,
+  "plan": "FREE"
+}
+```
+
+## Next modules
+
+The same enforcement utility is designed to be reused for Tasks, Assets, Vendors, Policies, Findings, Vulnerabilities, Evidence, and Frameworks.

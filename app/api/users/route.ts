@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerAuthContext } from "@/lib/server-auth";
 import { createAdminClient } from "@/lib/admin";
+import {
+  getOrganizationUserUsage,
+  isSubscriptionLimitError,
+  requireWithinPlanLimit,
+} from "@/lib/subscription-enforcement";
 
 const ROLES = [
   "Organization Admin",
@@ -42,7 +47,9 @@ export async function GET() {
     const { data, error: queryError } = await query;
     if (queryError) return NextResponse.json({ error: queryError.message }, { status: 500 });
 
-    return NextResponse.json({ users: data || [] });
+    const usage = await getOrganizationUserUsage(organizationId!);
+
+    return NextResponse.json({ users: data || [], usage });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unable to load users." },
@@ -88,6 +95,27 @@ export async function POST(request: Request) {
     }
 
     const admin = createAdminClient();
+
+    const usage = await getOrganizationUserUsage(organizationId);
+    const projectedUsage = usage.current + 1;
+    try {
+      await requireWithinPlanLimit(organizationId, "users", projectedUsage);
+    } catch (limitError) {
+      if (isSubscriptionLimitError(limitError)) {
+        return NextResponse.json(
+          {
+            error: limitError.message,
+            code: limitError.code,
+            resource: limitError.resource,
+            current: usage.current,
+            limit: limitError.limit,
+            plan: limitError.plan,
+          },
+          { status: 402 }
+        );
+      }
+      throw limitError;
+    }
 
     const { data: existingUser, error: lookupError } = await admin
       .from("users")

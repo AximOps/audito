@@ -1,10 +1,10 @@
 # Installation
 
-1. Copy these files into the existing AuditOps project.
-2. Run `database/migrations/007_organization_management.sql` in Supabase SQL Editor.
-3. Ensure `SUPABASE_SERVICE_ROLE_KEY` is configured on the server/Vercel project.
-4. Deploy.
+1. Apply the previously supplied organization-management + subscription-plan patch.
+2. Copy this patch over the existing AuditOps source tree.
+3. Run the existing database migrations 007 and 008 if they have not already been applied.
+4. Run `npm run build`.
+5. Verify Users & Roles for FREE, Standard, Pro and Enterprise organizations.
+6. Verify that inviting/adding a user at the plan limit returns `PLAN_LIMIT_REACHED` and does not create an Auth user or membership.
 
-The existing Platform navigation already points Platform Admin users to `/platform/organizations` in the Phase 3 application shell.
-
-The organization page is Platform Admin-only through the server API. The browser does not receive the service role key.
+No new SQL migration is required for this patch.
