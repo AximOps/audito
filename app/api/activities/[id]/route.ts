@@ -1,7 +1,6 @@
+import { getServerAuthContext } from "@/lib/server-auth";
 import { NextResponse } from "next/server";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
 
 const WRITE_ROLES = [
   "Organization Admin",
@@ -25,67 +24,7 @@ const STATUSES = [
 
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
 
-async function getContext() {
-  const cookieStore = cookies();
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(
-          cookiesToSet: {
-            name: string;
-            value: string;
-            options: CookieOptions;
-          }[]
-        ) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set({ name, value, ...options })
-            );
-          } catch {}
-        },
-      },
-    }
-  );
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return { user: null, profile: null, error: "Unauthorized." };
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("user_profiles")
-    .select("id,organization_id,full_name,role,status")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileError || !profile) {
-    return {
-      user,
-      profile: null,
-      error: "Your AuditOps user profile could not be found.",
-    };
-  }
-
-  if (profile.status !== "Active") {
-    return {
-      user,
-      profile,
-      error: "Your AuditOps account is not active.",
-    };
-  }
-
-  return { user, profile, error: null };
-}
+const getContext = getServerAuthContext;
 
 function adminClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;

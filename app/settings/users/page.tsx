@@ -13,6 +13,7 @@ import { createClient, getCurrentProfile } from "@/lib/auth";
 import { ROLE_OPTIONS, isAdmin } from "@/lib/rbac";
 
 type UserRow = {
+  membership_id: string;
   id: string;
   full_name: string | null;
   job_title: string | null;
@@ -56,9 +57,9 @@ export default function UsersPage() {
 
     const { data, error: loadError } =
       await createClient()
-        .from("user_profiles")
+        .from("organization_memberships")
         .select(
-          "id,full_name,job_title,role,status,created_at"
+          "id,role,status,created_at,user:user_profiles!user_id(id,full_name,job_title)"
         )
         .eq(
           "organization_id",
@@ -70,7 +71,16 @@ export default function UsersPage() {
       setError(loadError.message);
       setRows([]);
     } else {
-      setRows((data || []) as UserRow[]);
+      const mapped: UserRow[] = (data || []).map((membership: any) => ({
+        membership_id: membership.id,
+        id: membership.user?.id || "",
+        full_name: membership.user?.full_name || null,
+        job_title: membership.user?.job_title || null,
+        role: membership.role,
+        status: membership.status,
+        created_at: membership.created_at,
+      }));
+      setRows(mapped);
     }
 
     setLoading(false);
@@ -97,9 +107,9 @@ export default function UsersPage() {
 
     const { error: updateError } =
       await createClient()
-        .from("user_profiles")
-        .update({ role })
-        .eq("id", id)
+        .from("organization_memberships")
+        .update({ role, updated_at: new Date().toISOString() })
+        .eq("id", rows.find((row) => row.id === id)?.membership_id || "")
         .eq(
           "organization_id",
           profile.organization_id
@@ -134,9 +144,9 @@ export default function UsersPage() {
 
     const { error: updateError } =
       await createClient()
-        .from("user_profiles")
-        .update({ status })
-        .eq("id", id)
+        .from("organization_memberships")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", rows.find((row) => row.id === id)?.membership_id || "")
         .eq(
           "organization_id",
           profile.organization_id
@@ -450,6 +460,9 @@ export default function UsersPage() {
 
                         <option value="Suspended">
                           Suspended
+                        </option>
+                        <option value="Invited">
+                          Invited
                         </option>
                       </select>
                     </div>

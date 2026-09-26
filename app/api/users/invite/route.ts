@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { getServerAuthContext } from "@/lib/server-auth";
 
 const ALLOWED_ROLES = [
   "Compliance Manager",
@@ -11,139 +10,50 @@ const ALLOWED_ROLES = [
   "Auditor / Read Only",
 ];
 
+function adminClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured.");
+  }
+
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+}
+
 export async function POST(request: Request) {
   try {
-    const cookieStore = cookies();
+    const { user, profile, organization, error } =
+      await getServerAuthContext();
 
-    /*
-     * ---------------------------------------------------------
-     * Authenticated Supabase client
-     * ---------------------------------------------------------
-     */
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-
-          setAll(
-            cookiesToSet: {
-              name: string;
-              value: string;
-              options: CookieOptions;
-            }[]
-          ) {
-            try {
-              cookiesToSet.forEach(
-                ({ name, value, options }) => {
-                  cookieStore.set({
-                    name,
-                    value,
-                    ...options,
-                  });
-                }
-              );
-            } catch {
-              // Cookie modification may not be available
-              // in every server execution context.
-            }
-          },
-        },
-      }
-    );
-
-    /*
-     * ---------------------------------------------------------
-     * Verify current authenticated user
-     * ---------------------------------------------------------
-     */
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user || !profile) {
       return NextResponse.json(
-        {
-          error: "Unauthorized.",
-        },
+        { error: error || "Unauthorized." },
         { status: 401 }
       );
     }
 
-    /*
-     * ---------------------------------------------------------
-     * Load current AuditOps profile
-     * ---------------------------------------------------------
-     */
-
-    const {
-      data: currentProfile,
-      error: profileError,
-    } = await supabase
-      .from("user_profiles")
-      .select(
-        `
-        id,
-        organization_id,
-        full_name,
-        role,
-        status,
-        email
-        `
-      )
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !currentProfile) {
+    if (profile.status !== "Active") {
       return NextResponse.json(
-        {
-          error:
-            "Your AuditOps user profile could not be found.",
-        },
+        { error: "Your AuditOps account is not active." },
         { status: 403 }
       );
     }
 
-    /*
-     * ---------------------------------------------------------
-     * RBAC check
-     * ---------------------------------------------------------
-     */
-
-    if (
-      currentProfile.role !==
-      "Organization Admin"
-    ) {
+    if (profile.role !== "Organization Admin") {
       return NextResponse.json(
-        {
-          error:
-            "Only Organization Admins can invite users.",
-        },
+        { error: "Only Organization Admins can invite users." },
         { status: 403 }
       );
     }
-
-    if (currentProfile.status !== "Active") {
-      return NextResponse.json(
-        {
-          error:
-            "Your AuditOps account is not active.",
-        },
-        { status: 403 }
-      );
-    }
-
-    /*
-     * ---------------------------------------------------------
-     * Parse request
-     * ---------------------------------------------------------
-     */
 
     const body = await request.json();
 
@@ -167,242 +77,168 @@ export async function POST(request: Request) {
         ? body.role.trim()
         : "Contributor";
 
-    /*
-     * ---------------------------------------------------------
-     * Validation
-     * ---------------------------------------------------------
-     */
-
     if (!email) {
       return NextResponse.json(
-        {
-          error: "Email is required.",
-        },
+        { error: "Email is required." },
         { status: 400 }
       );
     }
 
     if (!fullName) {
       return NextResponse.json(
-        {
-          error: "Full name is required.",
-        },
+        { error: "Full name is required." },
         { status: 400 }
       );
     }
 
     if (!ALLOWED_ROLES.includes(role)) {
       return NextResponse.json(
-        {
-          error: "Invalid role.",
-        },
+        { error: "Invalid role." },
         { status: 400 }
       );
     }
 
-    /*
-     * Do not allow Organization Admin creation
-     * through the normal invitation UI.
-     */
-    if (role === "Organization Admin") {
+    if (user.email?.toLowerCase() === email) {
       return NextResponse.json(
-        {
-          error:
-            "Organization Admin invitations require elevated administration.",
-        },
+        { error: "You cannot invite yourself." },
         { status: 400 }
       );
     }
 
-    /*
-     * Prevent self-invitation.
-     */
-    if (
-      user.email &&
-      user.email.toLowerCase() === email
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "You cannot invite yourself.",
-        },
-        { status: 400 }
-      );
-    }
+    const admin = adminClient();
 
     /*
-     * ---------------------------------------------------------
-     * Check AuditOps profile
-     * ---------------------------------------------------------
+     * First check whether an AuditOps profile already exists.
+     * user_profiles is still retained as the global identity record
+     * during this migration.
      */
-
-    const {
-      data: existingProfile,
-      error: existingProfileError,
-    } = await supabase
-      .from("user_profiles")
-      .select(
-        "id, email, status, role"
-      )
-      .eq(
-        "organization_id",
-        currentProfile.organization_id
-      )
-      .ilike("email", email)
-      .maybeSingle();
+    const { data: existingProfile, error: existingProfileError } =
+      await admin
+        .from("user_profiles")
+        .select("id,email,full_name,job_title,status,organization_id")
+        .ilike("email", email)
+        .maybeSingle();
 
     if (existingProfileError) {
-      console.error(
-        "Existing profile lookup failed:",
-        existingProfileError
-      );
+      console.error("Existing profile lookup failed:", existingProfileError);
 
       return NextResponse.json(
-        {
-          error:
-            "Unable to check whether the user already exists.",
-        },
+        { error: "Unable to check whether the user already exists." },
         { status: 500 }
       );
     }
 
     if (existingProfile) {
-      return NextResponse.json(
-        {
-          error:
-            "A user with this email already exists in this organization.",
-        },
-        { status: 409 }
-      );
-    }
+      const { data: existingMembership } = await admin
+        .from("organization_memberships")
+        .select("id,status,role")
+        .eq("organization_id", profile.organization_id)
+        .eq("user_id", existingProfile.id)
+        .maybeSingle();
 
-    /*
-     * ---------------------------------------------------------
-     * Supabase Admin client
-     * ---------------------------------------------------------
-     *
-     * SERVICE ROLE KEY MUST NEVER be exposed to the browser.
-     */
-
-    const serviceRoleKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!serviceRoleKey) {
-      console.error(
-        "SUPABASE_SERVICE_ROLE_KEY is not configured."
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Server configuration is incomplete.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
+      if (existingMembership) {
+        return NextResponse.json(
+          {
+            error:
+              "A user with this email already has access to this organization.",
+          },
+          { status: 409 }
+        );
       }
-    );
+
+      /*
+       * Existing AuditOps user: add the user to this organization
+       * without creating a second auth account or duplicate profile.
+       */
+      const { error: membershipError } = await admin
+        .from("organization_memberships")
+        .insert({
+          organization_id: profile.organization_id,
+          user_id: existingProfile.id,
+          role,
+          status: "Active",
+          is_default: false,
+        });
+
+      if (membershipError) {
+        return NextResponse.json(
+          { error: membershipError.message },
+          { status: 400 }
+        );
+      }
+
+      await admin.from("audit_logs").insert({
+        organization_id: profile.organization_id,
+        user_id: user.id,
+        action: "USER_ADDED_TO_ORGANIZATION",
+        entity_type: "organization_membership",
+        entity_id: existingProfile.id,
+        new_values: {
+          email,
+          full_name: existingProfile.full_name,
+          role,
+          organization: organization?.[0]?.name ?? null,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: `${email} already has an AuditOps account and was added to this organization.`,
+          userId: existingProfile.id,
+        },
+        { status: 200 }
+      );
+    }
 
     /*
-     * ---------------------------------------------------------
-     * Invite user through Supabase Auth
-     * ---------------------------------------------------------
+     * New AuditOps user: create the Supabase invitation first.
      */
-
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
       "http://localhost:3000";
 
-    const {
-      data: invitedUser,
-      error: inviteError,
-    } =
-      await supabaseAdmin.auth.admin.inviteUserByEmail(
-        email,
-        {
-          redirectTo:
-            `${siteUrl}/auth/callback`,
-          data: {
-            full_name: fullName,
-            job_title: jobTitle,
-            organization_id:
-              currentProfile.organization_id,
-            role,
-          },
-        }
-      );
+    const { data: invitedUser, error: inviteError } =
+      await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${siteUrl}/auth/callback`,
+        data: {
+          full_name: fullName,
+          job_title: jobTitle,
+          organization_id: profile.organization_id,
+          role,
+        },
+      });
 
-    if (inviteError) {
-      console.error(
-        "Supabase invitation failed:",
-        inviteError
-      );
+    if (inviteError || !invitedUser.user) {
+      console.error("Supabase invitation failed:", inviteError);
 
       return NextResponse.json(
         {
           error:
-            inviteError.message ||
-            "Unable to send invitation.",
+            inviteError?.message ||
+            "Unable to create the invitation.",
         },
         { status: 400 }
       );
     }
 
-    if (!invitedUser.user) {
-      return NextResponse.json(
-        {
-          error:
-            "Supabase did not return the invited user.",
-        },
-        { status: 500 }
-      );
-    }
+    const newUserId = invitedUser.user.id;
 
-    /*
-     * ---------------------------------------------------------
-     * Create AuditOps user profile
-     * ---------------------------------------------------------
-     */
-
-    const {
-      error: insertProfileError,
-    } = await supabaseAdmin
+    const { error: insertProfileError } = await admin
       .from("user_profiles")
       .insert({
-        id: invitedUser.user.id,
-        organization_id:
-          currentProfile.organization_id,
+        id: newUserId,
+        organization_id: profile.organization_id,
         email,
         full_name: fullName,
-        job_title:
-          jobTitle || null,
+        job_title: jobTitle || null,
         role,
         status: "Invited",
         invited_at: new Date().toISOString(),
       });
 
     if (insertProfileError) {
-      /*
-       * If profile creation failed, remove the Auth user
-       * so we don't leave an orphaned account.
-       */
-      await supabaseAdmin.auth.admin.deleteUser(
-        invitedUser.user.id
-      );
-
-      console.error(
-        "User profile creation failed:",
-        insertProfileError
-      );
+      await admin.auth.admin.deleteUser(newUserId);
 
       return NextResponse.json(
         {
@@ -413,50 +249,51 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * ---------------------------------------------------------
-     * Audit log
-     * ---------------------------------------------------------
-     */
+    const { error: membershipError } = await admin
+      .from("organization_memberships")
+      .insert({
+        organization_id: profile.organization_id,
+        user_id: newUserId,
+        role,
+        status: "Invited",
+        is_default: true,
+      });
 
-    await supabaseAdmin
-  .from("audit_logs")
-  .insert({
-    organization_id:
-      currentProfile.organization_id,
-    user_id: user.id,
-    action: "USER_INVITED",
-    entity_type: "user_profile",
-    entity_id: invitedUser.user.id,
-    new_values: {
-      email,
-      full_name: fullName,
-      job_title: jobTitle || null,
-      role,
-      status: "Invited",
-    },
-  });
+    if (membershipError) {
+      await admin.from("user_profiles").delete().eq("id", newUserId);
+      await admin.auth.admin.deleteUser(newUserId);
 
-    /*
-     * ---------------------------------------------------------
-     * Response
-     * ---------------------------------------------------------
-     */
+      return NextResponse.json(
+        { error: "The organization membership could not be created." },
+        { status: 500 }
+      );
+    }
+
+    await admin.from("audit_logs").insert({
+      organization_id: profile.organization_id,
+      user_id: user.id,
+      action: "USER_INVITED",
+      entity_type: "organization_membership",
+      entity_id: newUserId,
+      new_values: {
+        email,
+        full_name: fullName,
+        job_title: jobTitle || null,
+        role,
+        status: "Invited",
+      },
+    });
 
     return NextResponse.json(
       {
         success: true,
-        message:
-          `Invitation sent to ${email}.`,
-        userId: invitedUser.user.id,
+        message: `Invitation sent to ${email}.`,
+        userId: newUserId,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error(
-      "Invite user unexpected error:",
-      error
-    );
+    console.error("Invite user unexpected error:", error);
 
     return NextResponse.json(
       {

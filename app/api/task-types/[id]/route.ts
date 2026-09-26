@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { getServerAuthContext } from "@/lib/server-auth";
+import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import type { CookieOptions } from "@supabase/ssr";
 const MANAGE_ROLES = ["Organization Admin", "Compliance Manager"];
 async function getContext() {
   const cookieStore = cookies();
