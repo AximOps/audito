@@ -18,23 +18,18 @@ export type Activity = {
   title: string;
   description?: string | null;
 
-  // Task type
   task_type: string;
   task_type_id: string | null;
 
-  // Task category
   category: string;
   category_id: string | null;
 
-  // Task status and priority
   status: ActivityStatus;
   priority: ActivityPriority;
 
-  // Assignment
   owner_id: string | null;
   reviewer_id: string | null;
 
-  // Supabase relationships
   owner?: {
     full_name: string | null;
   } | null;
@@ -43,7 +38,6 @@ export type Activity = {
     full_name: string | null;
   } | null;
 
-  // Scheduling
   frequency: string | null;
   start_date: string | null;
   due_date: string | null;
@@ -51,4 +45,32 @@ export type Activity = {
 
   created_at: string;
   updated_at: string;
+};
+
+
+/**
+ * Vulnerability
+ *
+ * Used by the dashboard and vulnerability management module.
+ */
+export type Vulnerability = {
+  id: string;
+
+  title: string;
+  description?: string | null;
+
+  cve: string | null;
+  severity: string;
+  status: string;
+
+  due_date: string | null;
+
+  asset_id?: string | null;
+
+  asset?: {
+    name: string | null;
+  } | null;
+
+  created_at?: string;
+  updated_at?: string;
 };
