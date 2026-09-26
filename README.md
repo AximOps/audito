@@ -1,36 +1,31 @@
-# AuditOps Organization Management Patch
+# AuditOps Organization Management + Subscription Plans
 
-Adds Platform Administration organization management:
+This overlay adds organization lifecycle management and centralized subscription entitlements.
 
-- Edit organization
-- Suspend organization
-- Reactivate organization
-- Soft-remove organization
-- Subscription plans: FREE, Standard, Pro, Enterprise
-- Create Organization with subscription
-- Platform Admin-only API authorization
-- Organization lifecycle audit log entries
-- Prevent suspended/removed organizations from being treated as active memberships
+## Organization management
 
-## Files
+- Edit organization name, slug, subscription, timezone, industry and status.
+- Suspend active organizations.
+- Reactivate suspended organizations.
+- Soft-remove organizations. Compliance data and audit history are retained.
+- Platform Admin authorization is enforced server-side.
+- Organization changes are written to `audit_logs`.
 
-- `app/platform/organizations/page.tsx`
-- `app/api/platform/organizations/route.ts`
-- `app/api/platform/organizations/[id]/route.ts`
-- `components/` (reserved for future shared organization UI)
-- `lib/organization-plans.ts`
-- `database/migrations/007_organization_management.sql`
+## Subscription plans
+
+- FREE
+- Standard
+- Pro
+- Enterprise
+
+The subscription catalog includes limits and feature entitlements for users, frameworks, tasks, assets, vendors, policies, findings, vulnerabilities, evidence, audit logs, API, webhooks, SSO, SCIM and enterprise capabilities.
 
 ## Installation
 
-Copy the patch files into the current AuditOps project, preserving the paths, then run the SQL migration in Supabase.
+1. Apply `database/migrations/007_organization_management.sql` if it has not already been applied.
+2. Apply `database/migrations/008_subscription_plans.sql`.
+3. Copy the `app`, `components`, and `lib` files into the existing AuditOps project.
+4. Keep your existing `server-auth` and admin client implementations.
+5. Build and deploy.
 
-The migration intentionally keeps the existing `organizations.plan` column for backward compatibility and synchronizes it with the new `subscription` field.
-
-Organization removal is soft removal: data is retained and the organization status becomes `Removed`.
-
-The API uses the existing AuditOps Phase 3 helpers:
-- `getServerAuthContext()`
-- `createAdminClient()`
-
-No password or authentication changes are included.
+`organizations.subscription` remains the organization's selected plan. The `subscription_plans` table is the database catalog of plan entitlements.
