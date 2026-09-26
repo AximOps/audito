@@ -15,10 +15,6 @@ import AppShell from "@/components/app-shell";
 import { createClient, getCurrentProfile } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import type { Activity, Vulnerability } from "@/lib/types";
-import type {
-  Activity,
-  Vulnerability,
-} from "@/lib/types";
 
 export default function Dashboard() {
   const [profile, setProfile] = useState<any>(null);
