@@ -203,7 +203,7 @@ export default function PlatformUsersPage() {
         {error && <div className="mb-5 rounded-lg bg-red-50 border border-red-100 text-red-700 p-3 text-sm">{error}</div>}
 
         <div className="bg-white border rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.5fr)_120px_170px_minmax(250px,1fr)] px-5 py-3 border-b bg-gray-50 text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+          <div className="grid grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.5fr)_120px_170px_minmax(360px,max-content)] px-5 py-3 border-b bg-gray-50 text-[11px] font-medium text-gray-500 uppercase tracking-wide">
             <div>User</div>
             <div>Email</div>
             <div>Status</div>
@@ -222,7 +222,7 @@ export default function PlatformUsersPage() {
                 return (
                   <div
                     key={row.user_id}
-                    className="grid grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.5fr)_120px_170px_minmax(250px,1fr)] px-5 py-4 items-center gap-3"
+                    className="grid grid-cols-[minmax(220px,1.5fr)_minmax(220px,1.5fr)_120px_170px_minmax(360px,max-content)] px-5 py-4 items-center gap-3"
                   >
                     <div>
                       <div className="font-medium text-sm">{name}</div>
@@ -235,7 +235,7 @@ export default function PlatformUsersPage() {
                     <div className="text-sm text-gray-700">
                       {row.user?.last_login_at ? new Date(row.user.last_login_at).toLocaleString() : "Never"}
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-nowrap whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => openEdit(row)}
