@@ -1,28 +1,33 @@
-# AuditOps Tasks + Subscription Enforcement
+# AuditOps — User Directory Organization-Style UI Patch
 
-Overlay patch for the existing AuditOps Tasks module.
+This overlay updates `app/platform/directory/page.tsx` so the User Directory follows the same management template used by Platform Administration > Organizations.
 
-## Included
+## Changes
 
-- Server-side active-task usage calculation.
-- FREE / Standard / Pro / Enterprise active-task limits from the existing centralized subscription configuration.
-- Server-side recurring-task feature gate.
-- Server-side automated-reminder feature gate.
-- `GET /api/tasks/subscription` for usage/capability information.
-- `POST /api/tasks/subscription` for feature validation.
-- Integration instructions for the existing task create/update APIs.
+- Status is displayed as a badge instead of an inline select.
+- Active users show **Edit / Suspend / Remove** actions.
+- Suspended users show **Edit / Reactivate / Remove** actions.
+- Edit opens the existing user-edit form in a modal.
+- Suspend and Remove use confirmation dialogs, matching the Organizations workflow.
+- Remove retains the application user record and audit history; the existing DELETE API remains responsible for removing organization memberships and platform access.
+- Existing User Directory list API and `/api/platform/directory/[id]` PATCH/DELETE APIs are reused.
+- No database migration is included.
+- Add Existing and Invite User buttons are intentionally left unchanged; this patch only aligns the management/status UI.
 
-## Plan behavior
+## Apply
 
-| Plan | Active Tasks | Recurring Tasks | Automated Reminders |
-|---|---:|---|---|
-| FREE | 25 | No | No |
-| Standard | 250 | Yes | Yes |
-| Pro | 2,500 | Yes | Yes |
-| Enterprise | Unlimited | Yes | Yes |
+Replace:
 
-## Important
+`app/platform/directory/page.tsx`
 
-The existing Tasks API is intentionally not overwritten because its current source was not available as a complete project tree when this overlay was prepared. Apply the small integration block in `TASK_ROUTE_INTEGRATION.md` to the existing task POST/PATCH handlers. This avoids replacing unrelated task/RBAC functionality.
+with the file in this package.
 
-No database migration is required.
+## API expectations
+
+The existing endpoint must support:
+
+- `PATCH /api/platform/directory/[id]` with `{ status: "Active" | "Suspended" }`
+- `PATCH /api/platform/directory/[id]` with `{ email, fullName, jobTitle }`
+- `DELETE /api/platform/directory/[id]`
+
+This matches the existing User Directory API from the previous AuditOps user-directory patch.
