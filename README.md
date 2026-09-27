@@ -1,33 +1,25 @@
-# AuditOps — User Directory Organization-Style UI Patch
+# AuditOps – Platform Admins Organizations-Style Management Template
 
-This overlay updates `app/platform/directory/page.tsx` so the User Directory follows the same management template used by Platform Administration > Organizations.
+## Purpose
 
-## Changes
+Updates `app/platform/users/page.tsx` so the Platform Admins screen follows the same management template used by the Organizations screen.
 
-- Status is displayed as a badge instead of an inline select.
-- Active users show **Edit / Suspend / Remove** actions.
-- Suspended users show **Edit / Reactivate / Remove** actions.
-- Edit opens the existing user-edit form in a modal.
-- Suspend and Remove use confirmation dialogs, matching the Organizations workflow.
-- Remove retains the application user record and audit history; the existing DELETE API remains responsible for removing organization memberships and platform access.
-- Existing User Directory list API and `/api/platform/directory/[id]` PATCH/DELETE APIs are reused.
-- No database migration is included.
-- Add Existing and Invite User buttons are intentionally left unchanged; this patch only aligns the management/status UI.
+## Included behavior
+
+- Status is displayed as a badge rather than an inline dropdown.
+- Active admins show **Edit**, **Suspend**, and **Remove** actions.
+- Suspended admins show **Edit**, **Reactivate**, and **Remove** actions.
+- Suspend and Remove use confirmation dialogs.
+- Edit continues to use the existing `PlatformAdminEditDialog`.
+- Existing Platform Admin APIs are retained; no database migration is required.
+- Removing an admin continues to revoke Platform Admin access while retaining the underlying user account, consistent with the existing API behavior.
 
 ## Apply
 
 Replace:
 
-`app/platform/directory/page.tsx`
+`app/platform/users/page.tsx`
 
-with the file in this package.
+with the included file.
 
-## API expectations
-
-The existing endpoint must support:
-
-- `PATCH /api/platform/directory/[id]` with `{ status: "Active" | "Suspended" }`
-- `PATCH /api/platform/directory/[id]` with `{ email, fullName, jobTitle }`
-- `DELETE /api/platform/directory/[id]`
-
-This matches the existing User Directory API from the previous AuditOps user-directory patch.
+No other files are required for this UI change.
