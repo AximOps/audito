@@ -1,14 +1,7 @@
-# AuditOps Tasks - Inline Editing Controls Fix
+# AuditOps Tasks Inline Dropdown Fix v2
 
-This overlay addresses the task-list behavior shown in the supplied screenshot.
+Replace `app/activities/page.tsx` with the included file.
 
-The previous form-control patch only affected the New/Edit Task form. This patch adds the controls directly to each task row.
+The task table itself now renders native controls in every row: Type, Category, Status and Priority are `<select>` dropdowns and Due is an `<input type="date">` calendar picker. Changes are saved immediately through the existing Supabase `compliance_activities` update path.
 
-## Included
-
-- `components/tasks/inline-task-editable-cells.tsx`
-- `TASKS_INLINE_EDIT_INTEGRATION.md`
-
-No database migration is required.
-
-The existing PATCH task API, RBAC, organization checks, and subscription enforcement remain authoritative.
+This specifically fixes the issue where controls existed only inside the task edit screen.
