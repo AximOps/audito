@@ -34,11 +34,38 @@ type AccessContext = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function middleware(request: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    // Most common cause of MIDDLEWARE_INVOCATION_FAILED: env vars not set for
+    // this Vercel environment (e.g. Preview), or set after the last build.
+    console.error("[middleware] NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY missing");
+    return new NextResponse(
+      "AuditOps is misconfigured: Supabase environment variables are missing for this deployment.",
+      { status: 500, headers: { "content-type": "text/plain" } }
+    );
+  }
+
+  try {
+    return await handle(request, supabaseUrl, supabaseKey);
+  } catch (error) {
+    console.error("[middleware] unhandled error:", error);
+    const { pathname } = request.nextUrl;
+    if (matches(pathname, PUBLIC_PREFIXES)) return NextResponse.next({ request });
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Authentication service unavailable." }, { status: 503 });
+    }
+    return NextResponse.redirect(new URL("/login?error=session_error", request.url));
+  }
+}
+
+async function handle(request: NextRequest, supabaseUrl: string, supabaseKey: string) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         getAll() {
@@ -63,7 +90,7 @@ export async function middleware(request: NextRequest) {
 
   // Redirect / JSON while keeping any refreshed or cleared auth cookies.
   const finish = (target: NextResponse) => {
-    response.cookies.getAll().forEach((cookie) => target.cookies.set(cookie));
+    response.cookies.getAll().forEach(({ name, value, ...options }) => target.cookies.set(name, value, options));
     return target;
   };
   const redirectTo = (path: string) => finish(NextResponse.redirect(new URL(path, request.url)));
