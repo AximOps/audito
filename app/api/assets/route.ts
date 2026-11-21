@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { getServerAuthContext } from "@/lib/server-auth";
-import { can } from "@/lib/rbac";
+import { can, rolesFor } from "@/lib/rbac";
 import { requireAssetCapacity } from "@/lib/assets-subscription";
 
-const WRITE_ROLES = new Set([
-  "Organization Admin",
-  "Security Manager",
-  "IT Manager",
-  "Contributor",
-]);
+const WRITE_ROLES = new Set<string>(rolesFor("assets", "update"));
+const DELETE_ROLES = new Set<string>(rolesFor("assets", "delete"));
 
-function canWrite(profile: any, platformRole: string | null) {
-  return platformRole === "Platform Admin" || WRITE_ROLES.has(profile?.role);
+// No Platform Admin bypass: writes use the user's client and RLS checks the
+// membership role, so a bypass here only produced confusing RLS errors.
+function canWrite(profile: any, _platformRole?: string | null) {
+  return WRITE_ROLES.has(profile?.role);
+}
+
+function canDelete(profile: any) {
+  return DELETE_ROLES.has(profile?.role);
 }
 
 export async function GET(request: Request) {
@@ -22,7 +24,7 @@ export async function GET(request: Request) {
   if (!auth.organization || !auth.profile) {
     return NextResponse.json({ error: "No active organization selected." }, { status: 400 });
   }
-  if (!can(auth.profile.role, "assets") && auth.platformRole !== "Platform Admin") {
+  if (!can(auth.profile.role, "assets")) {
     return NextResponse.json({ error: "You are not authorized to access assets." }, { status: 403 });
   }
 

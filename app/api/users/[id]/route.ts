@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { getServerAuthContext } from "@/lib/server-auth";
 import { createAdminClient } from "@/lib/admin";
+import { ROLE_OPTIONS } from "@/lib/rbac";
+import { writeAuditLog } from "@/lib/audit";
 
-const ROLES = [
-  "Organization Admin",
-  "Compliance Manager",
-  "Security Manager",
-  "IT Manager",
-  "Contributor",
-  "Auditor / Read Only",
-];
+
+const ROLES: readonly string[] = ROLE_OPTIONS;
+
+function friendlyDbError(message: string) {
+  return /at least one active Organization Admin/i.test(message)
+    ? "An organization must keep at least one active Organization Admin."
+    : message;
+}
 
 export async function PATCH(
   request: Request,
@@ -30,6 +32,8 @@ export async function PATCH(
 
     if (!target) return NextResponse.json({ error: "User not found." }, { status: 404 });
 
+    // Platform Admins may edit global directory fields. Membership changes
+    // below still apply to the organization they are currently working in.
     if (platformRole === "Platform Admin") {
       const userChanges: Record<string, unknown> = {};
       if (typeof body.fullName === "string") userChanges.full_name = body.fullName.trim();
@@ -50,10 +54,12 @@ export async function PATCH(
         if (emailError) return NextResponse.json({ error: emailError.message }, { status: 400 });
       }
 
-      return NextResponse.json({ success: true });
+      if (!(typeof body.role === "string" || typeof body.status === "string") || !profile?.organization_id) {
+        return NextResponse.json({ success: true });
+      }
     }
 
-    if (profile?.role !== "Organization Admin" || !profile.organization_id) {
+    if (!profile?.organization_id || (platformRole !== "Platform Admin" && profile.role !== "Organization Admin")) {
       return NextResponse.json({ error: "Only Organization Admins can manage organization users." }, { status: 403 });
     }
 
@@ -65,7 +71,9 @@ export async function PATCH(
       .maybeSingle();
 
     if (!membership) return NextResponse.json({ error: "User is not a member of this organization." }, { status: 404 });
-    if (target.id === user.id && (body.role || body.status)) {
+    const roleChanging = typeof body.role === "string" && body.role !== membership.role;
+    const statusChanging = typeof body.status === "string" && body.status !== membership.status;
+    if (target.id === user.id && (roleChanging || statusChanging)) {
       return NextResponse.json({ error: "You cannot change your own organization role or membership status." }, { status: 400 });
     }
 
@@ -82,8 +90,20 @@ export async function PATCH(
         .from("organization_memberships")
         .update(changes)
         .eq("id", membership.id);
-      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 });
+      if (updateError) return NextResponse.json({ error: friendlyDbError(updateError.message) }, { status: 400 });
+
+      await writeAuditLog({
+        organizationId: profile.organization_id,
+        userId: user.id,
+        action: "USER_MEMBERSHIP_UPDATED",
+        entityType: "organization_membership",
+        entityId: membership.id,
+        oldValues: { role: membership.role, status: membership.status },
+        newValues: { role: changes.role ?? membership.role, status: changes.status ?? membership.status, email: target.email },
+      });
     }
+
+    if (platformRole === "Platform Admin") return NextResponse.json({ success: true });
 
     const userChanges: Record<string, unknown> = {};
     if (typeof body.fullName === "string") userChanges.full_name = body.fullName.trim();
@@ -138,7 +158,7 @@ export async function DELETE(
       .delete()
       .eq("id", membership.id);
 
-    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 400 });
+    if (deleteError) return NextResponse.json({ error: friendlyDbError(deleteError.message) }, { status: 400 });
 
     await admin.from("audit_logs").insert({
       organization_id: organizationId,

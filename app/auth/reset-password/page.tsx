@@ -3,7 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
-import { createClient } from "@/lib/auth";
+import { createClient, signOutEverywhere } from "@/lib/auth";
+import { PASSWORD_MIN_LENGTH, validatePassword } from "@/lib/password-policy";
 
 type RecoveryState = "loading" | "ready" | "error" | "success";
 
@@ -15,12 +16,14 @@ export default function ResetPasswordPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [isInvite, setIsInvite] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function establishRecoverySession() {
       const supabase = createClient();
+      setIsInvite(new URLSearchParams(window.location.search).get("mode") === "invite");
 
       try {
         const hash = window.location.hash.startsWith("#")
@@ -110,8 +113,12 @@ export default function ResetPasswordPage() {
     setError("");
     setMessage("");
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    const {
+      data: { user: currentUser },
+    } = await createClient().auth.getUser();
+    const problem = validatePassword(password, currentUser?.email);
+    if (problem) {
+      setError(problem);
       return;
     }
 
@@ -133,7 +140,15 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    await supabase.auth.signOut();
+    if (isInvite) {
+      // Invitation accepted: stay signed in and enter the workspace.
+      window.location.assign("/dashboard");
+      return;
+    }
+
+    // Recovery: end every session so the new password is required.
+    await supabase.auth.signOut({ scope: "global" });
+    await signOutEverywhere();
 
     setMessage("Your password has been updated successfully.");
     setState("success");
@@ -182,9 +197,11 @@ export default function ResetPasswordPage() {
 
             {state === "ready" && (
               <>
-                <h2 className="text-2xl font-semibold">Set a new password</h2>
+                <h2 className="text-2xl font-semibold">{isInvite ? "Welcome to AuditOps" : "Set a new password"}</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Choose a new password for your AuditOps account.
+                  {isInvite
+                    ? "Choose a password for your account. You can also sign in with Google or Microsoft if your organization allows it."
+                    : "Choose a new password for your AuditOps account."}
                 </p>
 
                 <form onSubmit={submit} className="mt-7 space-y-4">
@@ -192,7 +209,7 @@ export default function ResetPasswordPage() {
                     <span className="text-sm font-medium">New password</span>
                     <input
                       required
-                      minLength={8}
+                      minLength={PASSWORD_MIN_LENGTH}
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -207,7 +224,7 @@ export default function ResetPasswordPage() {
                     </span>
                     <input
                       required
-                      minLength={8}
+                      minLength={PASSWORD_MIN_LENGTH}
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}

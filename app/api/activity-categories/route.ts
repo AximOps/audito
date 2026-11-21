@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { rolesFor } from "@/lib/rbac";
 import { getServerAuthContext } from "@/lib/server-auth";
 
-const MANAGE_ROLES = ["Organization Admin", "Compliance Manager"];
+const MANAGE_ROLES: readonly string[] = rolesFor("taskCategories", "update");
+const DELETE_ROLES: readonly string[] = rolesFor("taskCategories", "delete");
 
 export async function GET() {
   const { user, profile, supabase, error } = await getServerAuthContext();
@@ -17,7 +19,7 @@ export async function POST(request: Request) {
   const { user, profile, platformRole, supabase, error } = await getServerAuthContext();
   if (!user) return NextResponse.json({ error: error || "Unauthorized." }, { status: 401 });
   if (!profile?.organization_id) return NextResponse.json({ error: "No active organization is selected." }, { status: 400 });
-  if (platformRole !== "Platform Admin" && !MANAGE_ROLES.includes(profile.role)) return NextResponse.json({ error: "You do not have permission to manage activity categories." }, { status: 403 });
+  if (!MANAGE_ROLES.includes(profile.role)) return NextResponse.json({ error: "You do not have permission to manage activity categories." }, { status: 403 });
 
   const body = await request.json();
   const name = typeof body.name === "string" ? body.name.trim() : "";

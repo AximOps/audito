@@ -19,9 +19,11 @@ import {
   Tags,
   Building2,
   Check,
+  KeyRound,
+  Globe,
 } from "lucide-react";
 import {
-  createClient,
+  signOutEverywhere,
   getCurrentProfile,
   getOrganizationMemberships,
   setActiveOrganizationId,
@@ -45,6 +47,12 @@ const adminNav = [
     label: "Users & Roles",
     icon: Users,
     permission: "users" as const,
+  },
+  {
+    href: "/settings/authentication",
+    label: "Sign-in & Access",
+    icon: KeyRound,
+    permission: "authSettings" as const,
   },
   {
     href: "/settings/task-types",
@@ -109,8 +117,8 @@ export default function AppShell({
   }, [pathname, router]);
 
   async function signOut() {
-    await createClient().auth.signOut();
-    router.replace("/login");
+    await signOutEverywhere();
+    window.location.assign("/login");
   }
 
   async function switchOrganization(membership: OrganizationMembership) {
@@ -145,11 +153,10 @@ export default function AppShell({
     }
   }
 
-  const role = profile?.role;
-  // Platform Admins retain platform-level authority while operating inside
-  // an organization. Normal users continue to use their membership role.
-  const effectiveRole =
-    platformRole === "Platform Admin" ? "Organization Admin" : role;
+  // Tenant permissions always come from the membership role in the active
+  // organization: that is what RLS enforces. Platform Admin authority is
+  // exposed separately through the Platform section.
+  const effectiveRole = profile?.role;
 
   const unauthorized =
     !!profile &&
@@ -268,6 +275,12 @@ export default function AppShell({
                 icon={Users}
                 active={pathname.startsWith("/platform/directory")}
               />
+              <NavItem
+                href="/platform/domains"
+                label="Email Domains"
+                icon={Globe}
+                active={pathname.startsWith("/platform/domains")}
+              />
             </>
           )}
         </div>
@@ -298,7 +311,7 @@ export default function AppShell({
                   {profile?.full_name || "User"}
                 </div>
                 <div className="text-[11px] text-gray-400">
-                  {effectiveRole || "Loading…"}
+                  {effectiveRole || (platformRole ? platformRole : profile ? "No role" : "Loading…")}
                 </div>
               </div>
 

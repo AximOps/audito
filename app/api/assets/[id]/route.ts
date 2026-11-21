@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
+import { rolesFor } from "@/lib/rbac";
 import { getServerAuthContext } from "@/lib/server-auth";
 
-const WRITE_ROLES = new Set([
-  "Organization Admin",
-  "Security Manager",
-  "IT Manager",
-  "Contributor",
-]);
+const WRITE_ROLES = new Set<string>(rolesFor("assets", "update"));
+const DELETE_ROLES = new Set<string>(rolesFor("assets", "delete"));
 
-function canWrite(profile: any, platformRole: string | null) {
-  return platformRole === "Platform Admin" || WRITE_ROLES.has(profile?.role);
+// No Platform Admin bypass: writes use the user's client and RLS checks the
+// membership role, so a bypass here only produced confusing RLS errors.
+function canWrite(profile: any, _platformRole?: string | null) {
+  return WRITE_ROLES.has(profile?.role);
+}
+
+function canDelete(profile: any) {
+  return DELETE_ROLES.has(profile?.role);
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
@@ -76,7 +79,7 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
   const auth = await getServerAuthContext();
   if (auth.error || !auth.user) return NextResponse.json({ error: auth.error || "Unauthorized." }, { status: 401 });
   if (!auth.organization || !auth.profile) return NextResponse.json({ error: "No active organization selected." }, { status: 400 });
-  if (!canWrite(auth.profile, auth.platformRole)) return NextResponse.json({ error: "You are not authorized to remove assets." }, { status: 403 });
+  if (!canDelete(auth.profile)) return NextResponse.json({ error: "You are not authorized to remove assets." }, { status: 403 });
 
   const { error } = await auth.supabase
     .from("assets")

@@ -30,7 +30,9 @@ export async function GET() {
     }
 
     const organizationId = profile?.organization_id;
-    if (!organizationId && !platformRole) {
+    // Platform Admins outside an organization use /platform/directory instead;
+    // never list every tenant's memberships from this endpoint.
+    if (!organizationId) {
       return NextResponse.json({ error: "No organization is selected." }, { status: 400 });
     }
 
@@ -38,16 +40,16 @@ export async function GET() {
     let query = admin
       .from("organization_memberships")
       .select(
-        "id,user_id,organization_id,role,status,is_default,created_at,user:users!user_id(id,email,full_name,job_title,status,last_login_at,created_at)"
+        "id,user_id,organization_id,role,status,is_default,created_at,user:users!user_id(id,email,full_name,job_title,status,last_login_at,last_login_provider,auth_providers,created_at)"
       )
       .order("created_at", { ascending: true });
 
-    if (organizationId) query = query.eq("organization_id", organizationId);
+    query = query.eq("organization_id", organizationId);
 
     const { data, error: queryError } = await query;
     if (queryError) return NextResponse.json({ error: queryError.message }, { status: 500 });
 
-    const usage = await getOrganizationUserUsage(organizationId!);
+    const usage = await getOrganizationUserUsage(organizationId);
 
     return NextResponse.json({ users: data || [], usage });
   } catch (err) {
@@ -168,6 +170,20 @@ export async function POST(request: Request) {
 
       if (membershipError) return NextResponse.json({ error: membershipError.message }, { status: 400 });
 
+      // Self-registered (Pending) users become Active once an admin grants access.
+      if (existingUser.status === "Pending") {
+        await admin
+          .from("users")
+          .update({ status: "Active", approved_at: new Date().toISOString(), approved_by: user.id, updated_at: new Date().toISOString() })
+          .eq("id", existingUser.id);
+      }
+
+      // Legacy profile row needed for owner/reviewer references.
+      await admin.from("user_profiles").upsert(
+        { id: existingUser.id, organization_id: organizationId, full_name: existingUser.full_name, job_title: existingUser.job_title, role, status: "Active" },
+        { onConflict: "id", ignoreDuplicates: true }
+      );
+
       await admin.from("audit_logs").insert({
         organization_id: organizationId,
         user_id: user.id,
@@ -183,8 +199,11 @@ export async function POST(request: Request) {
     if (!fullName) return NextResponse.json({ error: "Full name is required." }, { status: 400 });
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+    // Invitation links land on /auth/callback (fragment tokens are forwarded to
+    // /auth/complete) and then ask the user to choose a password. With the
+    // token_hash email template they go to /auth/confirm instead.
     const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${siteUrl}/auth/callback`,
+      redirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent("/auth/reset-password?mode=invite")}`,
       data: { full_name: fullName, job_title: jobTitle, organization_id: organizationId, role },
     });
 
