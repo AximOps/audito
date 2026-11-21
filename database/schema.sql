@@ -29,6 +29,15 @@ create index idx_assets_org on public.assets(organization_id);
 -- Helper: current user's organization.
 create or replace function public.current_org_id() returns uuid language sql stable security definer set search_path=public as $$ select organization_id from public.user_profiles where id=auth.uid() $$;
 
+-- Role helpers (moved above first use; fresh installs failed at the activity_categories policies).
+create or replace function public.current_user_role() returns text
+language sql stable security definer set search_path=public
+as $$ select role from public.user_profiles where id=auth.uid() limit 1 $$;
+
+create or replace function public.has_role(allowed_roles text[]) returns boolean
+language sql stable security definer set search_path=public
+as $$ select coalesce(public.current_user_role() = any(allowed_roles), false) $$;
+
 -- Enable RLS.
 alter table public.organizations enable row level security;
 alter table public.user_profiles enable row level security;
@@ -80,13 +89,6 @@ alter table public.user_profiles add constraint user_profiles_status_check check
 -- RLS remains the final authorization boundary; the UI only hides unavailable UI.
 -- -----------------------------------------------------------------------------
 
-create or replace function public.current_user_role() returns text
-language sql stable security definer set search_path=public
-as $$ select role from public.user_profiles where id=auth.uid() limit 1 $$;
-
-create or replace function public.has_role(allowed_roles text[]) returns boolean
-language sql stable security definer set search_path=public
-as $$ select coalesce(public.current_user_role() = any(allowed_roles), false) $$;
 
 -- Drop broad V1 policies before installing least-privilege policies.
 drop policy if exists profile_same_org on public.user_profiles;

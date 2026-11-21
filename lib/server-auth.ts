@@ -82,14 +82,20 @@ export async function getServerAuthContext() {
     };
   }
 
-  if (appUser.status === "Disabled" || appUser.status === "Suspended") {
+  if (appUser.status !== "Active") {
+    const messages: Record<string, string> = {
+      Suspended: "Your AuditOps account is suspended.",
+      Disabled: "Your AuditOps account is disabled.",
+      Pending: "Your AuditOps account is awaiting approval.",
+      Invited: "Your AuditOps invitation has not been accepted yet.",
+    };
     return {
       supabase,
       user,
       profile: null,
       organization: null,
       platformRole: null,
-      error: appUser.status === "Suspended" ? "Your AuditOps account is suspended." : "Your AuditOps account is disabled.",
+      error: messages[appUser.status] || "Your AuditOps account is not active.",
     };
   }
 

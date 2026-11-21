@@ -19,21 +19,46 @@ export type OrganizationMembership = {
   } | null;
 };
 
+// The active organization lives in one cookie shared by browser and server
+// (lib/server-auth.ts reads the same name), so both always agree. The
+// localStorage copy is kept for older code paths only.
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.split("; ").find((part) => part.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) || null : null;
+}
+
 function getActiveOrganizationId(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+  return (
+    readCookie(ACTIVE_ORGANIZATION_STORAGE_KEY) ||
+    window.localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY)
+  );
 }
 
 export function setActiveOrganizationId(organizationId: string) {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, organizationId);
-  }
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, organizationId);
+  const secure = window.location.protocol === "https:" ? "; secure" : "";
+  document.cookie = `${ACTIVE_ORGANIZATION_STORAGE_KEY}=${encodeURIComponent(
+    organizationId
+  )}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax${secure}`;
 }
 
 export function clearActiveOrganizationId() {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACTIVE_ORGANIZATION_STORAGE_KEY);
+  document.cookie = `${ACTIVE_ORGANIZATION_STORAGE_KEY}=; path=/; max-age=0`;
+}
+
+/** Signs out on the server (clears auth + org cookies, writes audit log). */
+export async function signOutEverywhere() {
+  try {
+    await fetch("/api/auth/signout", { method: "POST" });
+  } catch {
+    await createClient().auth.signOut();
   }
+  clearActiveOrganizationId();
 }
 
 export function createClient() {

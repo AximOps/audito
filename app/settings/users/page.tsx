@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, Pencil, Shield, UserPlus, X } from "lucide-react";
+import { Check, Pencil, Shield, Trash2, UserPlus, X } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { getCurrentProfile } from "@/lib/auth";
-import { ROLE_OPTIONS, isAdmin } from "@/lib/rbac";
+import { ROLE_DESCRIPTIONS, ROLE_OPTIONS, isAdmin, isRole } from "@/lib/rbac";
+
+const PROVIDER_NAMES: Record<string, string> = { email: "Password", google: "Google", azure: "Microsoft" };
+
+function formatDate(value: string | null | undefined) {
+  return value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Never";
+}
 
 type UserRow = {
   id: string;
@@ -19,6 +25,8 @@ type UserRow = {
     job_title: string | null;
     status: string;
     last_login_at: string | null;
+    last_login_provider?: string | null;
+    auth_providers?: string[] | null;
     created_at: string;
   } | null;
 };
@@ -29,7 +37,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [modal, setModal] = useState<"invite" | "existing" | "edit" | null>(null);
+  const [modal, setModal] = useState<"invite" | "existing" | "edit" | "remove" | null>(null);
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<UserRow | null>(null);
   const [email, setEmail] = useState("");
@@ -133,6 +141,31 @@ export default function UsersPage() {
     }
   }
 
+  function openRemove(row: UserRow) {
+    setSelected(row);
+    setError("");
+    setMessage("");
+    setModal("remove");
+  }
+
+  async function removeMember() {
+    if (!selected) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/users/${selected.user_id}`, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to remove user.");
+      setMessage(result.message || "User removed from the organization.");
+      setModal(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove user.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function updateMembership(row: UserRow, field: "role" | "status", value: string) {
     setError("");
     const response = await fetch(`/api/users/${row.user_id}`, {
@@ -190,18 +223,20 @@ export default function UsersPage() {
         {error && <div className="mb-5 rounded-lg bg-red-50 border border-red-100 text-red-700 p-3 text-sm">{error}</div>}
 
         <div className="bg-white border rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[1.6fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-3 border-b text-[11px] uppercase tracking-wide text-gray-400 font-semibold">
-            <div>User</div><div>Email</div><div>Role</div><div>Status</div><div />
+          <div className="grid grid-cols-[1.5fr_1.3fr_1.1fr_1fr_0.9fr_auto] gap-4 px-5 py-3 border-b text-[11px] uppercase tracking-wide text-gray-400 font-semibold">
+            <div>User</div><div>Email</div><div>Sign-in</div><div>Role</div><div>Status</div><div />
           </div>
           {rows.length === 0 ? <div className="p-8 text-sm text-gray-500">No organization users found.</div> : <div className="divide-y">
             {rows.map((row) => {
               const isCurrent = row.user_id === profile.id;
-              return <div key={row.id} className="grid grid-cols-[1.6fr_1.4fr_1fr_1fr_auto] gap-4 px-5 py-4 items-center">
+              const providers = (row.user?.auth_providers || []).map((p) => PROVIDER_NAMES[p] || p);
+              return <div key={row.id} className="grid grid-cols-[1.5fr_1.3fr_1.1fr_1fr_0.9fr_auto] gap-4 px-5 py-4 items-center">
                 <div className="min-w-0"><div className="font-medium text-sm flex items-center gap-2">{row.user?.full_name || "Unnamed user"}{isCurrent && <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">You</span>}</div><div className="text-xs text-gray-500 mt-1">{row.user?.job_title || "No job title"}</div></div>
                 <div className="text-sm text-gray-600 truncate">{row.user?.email || "—"}</div>
+                <div className="min-w-0 text-xs text-gray-500"><div className="truncate">{providers.length ? providers.join(", ") : row.user?.status === "Invited" ? "Invitation sent" : "—"}</div><div className="text-gray-400 mt-0.5 truncate" title="Last sign-in">{formatDate(row.user?.last_login_at)}</div></div>
                 <select value={row.role} disabled={isCurrent} onChange={(e) => updateMembership(row, "role", e.target.value)} className="border rounded-lg px-2.5 py-2 text-sm bg-white disabled:bg-gray-100">{ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}</select>
                 <select value={row.status} disabled={isCurrent} onChange={(e) => updateMembership(row, "status", e.target.value)} className="border rounded-lg px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"><option>Active</option><option>Invited</option><option>Suspended</option></select>
-                <button onClick={() => openEdit(row)} className="p-2 rounded-lg hover:bg-gray-100" title="Edit user"><Pencil size={16}/></button>
+                <div className="flex"><button onClick={() => openEdit(row)} className="p-2 rounded-lg hover:bg-gray-100" title="Edit user" aria-label="Edit user"><Pencil size={16}/></button>{!isCurrent && <button onClick={() => openRemove(row)} className="p-2 rounded-lg hover:bg-red-50 text-red-600" title="Remove from organization" aria-label="Remove from organization"><Trash2 size={16}/></button>}</div>
               </div>;
             })}
           </div>}
@@ -209,17 +244,30 @@ export default function UsersPage() {
 
         <div className="mt-6 bg-gray-50 border rounded-xl p-5">
           <h3 className="font-semibold text-sm">How user access works</h3>
-          <p className="text-xs text-gray-500 mt-2">One AuditOps user can belong to multiple organizations. The role shown here applies only to the current organization.</p>
+          <p className="text-xs text-gray-500 mt-2">One AuditOps user can belong to multiple organizations. The role shown here applies only to the current organization. Users can sign in with any enabled method (password, Google, Microsoft) using the same email address.</p>
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 mt-4">{ROLE_OPTIONS.map((r) => <div key={r} className="text-xs"><span className="font-medium text-gray-700">{r}</span><span className="text-gray-500"> — {ROLE_DESCRIPTIONS[r]}</span></div>)}</div>
         </div>
       </div>
 
-      {modal && <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      {modal === "remove" && selected && <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-xl p-6">
+          <h2 className="font-semibold">Remove {selected.user?.full_name || selected.user?.email}?</h2>
+          <p className="text-sm text-gray-500 mt-2">They lose access to this organization immediately. Their AuditOps account and audit history are kept, and other organizations are not affected.</p>
+          {error && <div className="mt-4 rounded-lg bg-red-50 border border-red-100 text-red-700 p-3 text-sm">{error}</div>}
+          <div className="flex justify-end gap-2 mt-6">
+            <button onClick={() => setModal(null)} className="rounded-lg border px-4 py-2 text-sm">Cancel</button>
+            <button disabled={saving} onClick={removeMember} className="rounded-lg bg-red-600 text-white px-4 py-2 text-sm disabled:opacity-50">{saving ? "Removing…" : "Remove access"}</button>
+          </div>
+        </div>
+      </div>}
+
+      {modal && modal !== "remove" && <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
         <div className="w-full max-w-lg bg-white rounded-xl shadow-xl">
           <div className="flex items-center justify-between px-6 py-4 border-b"><div><h2 className="font-semibold">{modal === "invite" ? "Invite New User" : modal === "existing" ? "Add Existing User" : "Edit User"}</h2><p className="text-xs text-gray-500 mt-1">{modal === "existing" ? "Add an existing AuditOps account to this organization." : "Manage the user from the AuditOps portal."}</p></div><button onClick={() => setModal(null)}><X size={19}/></button></div>
           <div className="p-6 space-y-4">
             <Field label="Email"><input disabled={modal === "edit"} type="email" value={modal === "edit" ? selected?.user?.email || "" : email} onChange={(e) => setEmail(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" /></Field>
             {modal !== "existing" && <><Field label="Full Name"><input value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" /></Field><Field label="Job Title"><input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" /></Field></>}
-            <Field label="Organization Role"><select value={role} onChange={(e) => setRole(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">{ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}</select></Field>
+            <Field label="Organization Role"><select value={role} disabled={modal === "edit" && selected?.user_id === profile.id} onChange={(e) => setRole(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-100">{ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}</select>{isRole(role) && <p className="text-xs text-gray-500 mt-1">{ROLE_DESCRIPTIONS[role]}</p>}</Field>
             <button disabled={saving} onClick={submit} className="w-full rounded-lg bg-slate-950 text-white px-4 py-2.5 text-sm disabled:opacity-50">{saving ? "Saving…" : modal === "invite" ? "Send Invitation" : modal === "existing" ? "Add User" : "Save Changes"}</button>
           </div>
         </div>

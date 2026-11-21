@@ -1,17 +1,11 @@
 import { getServerAuthContext } from "@/lib/server-auth";
+import { rolesFor } from "@/lib/rbac";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const WRITE_ROLES = [
-  "Organization Admin",
-  "Compliance Manager",
-  "Contributor",
-];
+const WRITE_ROLES: readonly string[] = rolesFor("activities", "update");
 
-const DELETE_ROLES = [
-  "Organization Admin",
-  "Compliance Manager",
-];
+const DELETE_ROLES: readonly string[] = rolesFor("activities", "delete");
 
 const STATUSES = [
   "Not Started",
